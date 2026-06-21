@@ -17,6 +17,7 @@ exclude = ["dags*", "logs*"]
 
 [dependency-groups]
 dev = [
+  "aiohttp>=3.14.1",
   "apache-airflow>=3.2.2",
   "apache-airflow-providers-cncf-kubernetes",
   "beautifulsoup4>=4.15.0",

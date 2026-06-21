@@ -1885,6 +1885,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aiohttp" },
     { name = "apache-airflow" },
     { name = "apache-airflow-providers-cncf-kubernetes" },
     { name = "beautifulsoup4" },
@@ -1903,6 +1904,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aiohttp", specifier = ">=3.14.1" },
     { name = "apache-airflow", specifier = ">=3.2.2" },
     { name = "apache-airflow-providers-cncf-kubernetes" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
