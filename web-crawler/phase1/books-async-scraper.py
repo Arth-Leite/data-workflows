@@ -56,14 +56,22 @@ async def scrape_book_info(session, url, queue: asyncio.Queue):
             return
 
     soup = BeautifulSoup(text, "html.parser")
+    title = soup.select_one("h1")
+    rating = soup.select_one(".star-rating")
+    price = soup.select_one(".price_color")
+    currency = soup.select_one(".price_color")
+    description = soup.select_one(".product_page > p")
+
+    # Essentials
+    if not (title and price):
+        logging.error(f"Invalid data for {url}")
+
     book = {
-        "title": soup.select("h1")[0].text,
-        "rating": soup.select(".star-rating")[0]["class"][1],
-        "price": soup.select(".price_color")[0].text[1:],
-        "currency": soup.select(".price_color")[0].text[0],
-        "description": soup.select(".product_page > p")[0].text
-        if soup.select(".product_page > p")
-        else None,
+        "title": title.text,
+        "rating": rating["class"][1],
+        "price": price.text[1:],
+        "currency": currency.text[0],
+        "description": description.text if description else None,
     }
     await queue.put(json.dumps(book))
 
