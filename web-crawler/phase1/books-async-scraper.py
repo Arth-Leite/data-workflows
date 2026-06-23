@@ -4,6 +4,7 @@ import aiofiles
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import aiohttp
+import logging
 
 
 BASE_URL = "https://books.toscrape.com/"
@@ -29,7 +30,7 @@ async def batch_save_book_info(queue: asyncio.Queue):
 
         for _ in range(BATCH_SIZE):
             try:
-                books.append(queue.get_nowait())  # blocking
+                books.append(queue.get_nowait())
             except asyncio.QueueEmpty:
                 break
 
@@ -44,8 +45,15 @@ async def batch_save_book_info(queue: asyncio.Queue):
 async def scrape_book_info(session, url, queue: asyncio.Queue):
     async with semaphore_books:
         await asyncio.sleep(SLEEP_DELAY)
-        async with session.get(url) as response:
-            text = await response.text()
+        try:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logging.error(f"Error {response.status} for {url}")
+                    return
+                text = await response.text()
+        except Exception as e:
+            logging.error(f"Request failed for {url}: {e}")
+            return
 
     soup = BeautifulSoup(text, "html.parser")
     book = {
@@ -64,8 +72,15 @@ async def scrape_categories(session, category_url, queue):
     while True:
         async with semaphore_category:
             await asyncio.sleep(SLEEP_DELAY)
-            async with session.get(category_url) as response:
-                text = await response.text()
+            try:
+                async with session.get(category_url) as response:
+                    if response.status != 200:
+                        logging.error(f"Error {response.status} for {category_url}")
+                        return
+                    text = await response.text()
+            except Exception as e:
+                logging.error(f"Request failed for {category_url}: {e}")
+                return
 
         soup = BeautifulSoup(text, "html.parser")
 
