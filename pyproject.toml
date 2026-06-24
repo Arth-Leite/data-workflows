@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
   "faker>=40.21.0",
   "duckdb==1.5.3",
+  "tenacity>=9.1.4",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,4 +31,7 @@ dev = [
 
 [project.urls]
 "Homepage" = "https://github.com/yourusername/my-airflow-project"
-"Bug Tracker" = "https://github.com/yourusername/my-airflow-project/issues"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+

@@ -1,11 +1,12 @@
 import asyncio
 import json
-import aiofiles
-from urllib.parse import urljoin
-from bs4 import BeautifulSoup
-import aiohttp
 import logging
+from urllib.parse import urljoin
 
+import aiofiles
+import aiohttp
+import tenacity
+from bs4 import BeautifulSoup
 
 BASE_URL = "https://books.toscrape.com/"
 OUTPUT_FILE = "books.json"
@@ -16,6 +17,27 @@ BATCH_SIZE = 20
 
 semaphore_category = asyncio.Semaphore(CONCURRENCY)
 semaphore_books = asyncio.Semaphore(CONCURRENCY)
+
+
+@tenacity.retry(
+    stop=tenacity.stop_after_attempt(2),
+    wait=tenacity.wait_exponential_jitter(),
+    retry=tenacity.retry_if_exception_type(aiohttp.ClientError),
+    reraise=True,
+)
+async def fetch_url_request(session, url, semaphore):
+    async def _fetch_url_request(session, url):
+        await asyncio.sleep(SLEEP_DELAY)
+        async with session.get(url) as response:
+            if response.status != 200:
+                response.raise_for_status()
+            return await response.text()
+
+    if not semaphore:
+        return await _fetch_url_request(session, url)
+    else:
+        async with semaphore:
+            return await _fetch_url_request(session, url)
 
 
 async def batch_save_book_info(queue: asyncio.Queue):
@@ -43,17 +65,11 @@ async def batch_save_book_info(queue: asyncio.Queue):
 
 
 async def scrape_book_info(session, url, queue: asyncio.Queue):
-    async with semaphore_books:
-        await asyncio.sleep(SLEEP_DELAY)
-        try:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logging.error(f"Error {response.status} for {url}")
-                    return
-                text = await response.text()
-        except Exception as e:
-            logging.error(f"Request failed for {url}: {e}")
-            return
+    try:
+        text = await fetch_url_request(session, url, semaphore_books)
+    except Exception as e:
+        logging.error(f"Request failed for {url}: {e}")
+        return
 
     soup = BeautifulSoup(text, "html.parser")
     title = soup.select_one("h1")
@@ -78,17 +94,11 @@ async def scrape_book_info(session, url, queue: asyncio.Queue):
 
 async def scrape_categories(session, category_url, queue):
     while True:
-        async with semaphore_category:
-            await asyncio.sleep(SLEEP_DELAY)
-            try:
-                async with session.get(category_url) as response:
-                    if response.status != 200:
-                        logging.error(f"Error {response.status} for {category_url}")
-                        return
-                    text = await response.text()
-            except Exception as e:
-                logging.error(f"Request failed for {category_url}: {e}")
-                return
+        try:
+            text = await fetch_url_request(session, category_url, semaphore_books)
+        except Exception as e:
+            logging.error(f"Request failed for {category_url}: {e}")
+            return
 
         soup = BeautifulSoup(text, "html.parser")
 
@@ -111,12 +121,12 @@ async def scrape_categories(session, category_url, queue):
 async def main():
     category_urls = []
     queue = asyncio.Queue()
+
     async with aiohttp.ClientSession() as session:
-        async with session.get(BASE_URL) as response:
-            text = await response.text()
-            soup = BeautifulSoup(text, "html.parser")
-            for cat in soup.select(".nav-list ul a"):
-                category_urls.append(cat["href"])
+        text = await fetch_url_request(session, BASE_URL, None)
+        soup = BeautifulSoup(text, "html.parser")
+        for cat in soup.select(".nav-list ul a"):
+            category_urls.append(cat["href"])
 
         writer_tasks = asyncio.create_task(batch_save_book_info(queue))
         tasks = []
