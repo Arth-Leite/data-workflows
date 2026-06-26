@@ -1,0 +1,25 @@
+[project]
+name = "airflow-pipelines"
+version = "0.1.0"
+description = "Airflow pipeline definitions"
+requires-python = ">=3.12"
+dependencies = [
+    "faker>=40.21.0",
+    "duckdb>=1.5.4",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+exclude = ["dags*", "logs*"]
+
+[dependency-groups]
+dev = [
+    "apache-airflow>=3.2.2",
+    "apache-airflow-providers-cncf-kubernetes",
+    "ipykernel>=7.3.0",
+    "ipython>=9.14.1",
+    "ruff>=0.15.17",
+]

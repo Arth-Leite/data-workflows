@@ -1,0 +1,14 @@
+[project]
+name = "data-workflows"
+version = "0.1.0"
+description = "Shared utilities for data workflow orchestration"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.3",
+    "faker>=40.21.0",
+    "tenacity>=9.1.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

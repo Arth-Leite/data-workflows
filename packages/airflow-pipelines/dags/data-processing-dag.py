@@ -13,7 +13,7 @@ from faker import Faker
 # Define file paths
 BASE_DIR = "/opt/airflow/"  # Root for data and DAGs
 DATA_DIR = os.path.join(BASE_DIR, "task-outputs")
-RAW_DATA_FILE = os.path.join(DATA_DIR, "fake_employee_data.csv")
+RAW_DATA_FILE = os.path.join(DATA_DIR, "fake_employee_data.json")
 METRICS_FILE = os.path.join(DATA_DIR, "salary_metrics.csv")
 
 os.makedirs(DATA_DIR, exist_ok=True)  # exist_ok avoids the if-check

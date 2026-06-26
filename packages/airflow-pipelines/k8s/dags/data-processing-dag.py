@@ -3,9 +3,9 @@ import datetime
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.sdk import DAG
 from kubernetes.client import (
+    V1PersistentVolumeClaimVolumeSource,
     V1Volume,
     V1VolumeMount,
-    V1PersistentVolumeClaimVolumeSource,
 )
 
 SHARED_VOLUME = V1Volume(
