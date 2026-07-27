@@ -10,4 +10,5 @@ select = ["E", "F", "I"]
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
+    "redis>=8.0.1",
 ]
