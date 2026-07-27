@@ -15,12 +15,8 @@ with DAG(
     description="This DAG is for test only",
     default_args={"retries": 0},
 ) as dag:
-    generate_randint = BashOperator(
-        task_id="generate_randint", bash_command="shuf -i 1-100 -n 1", do_xcom_push=True
-    )
+    generate_randint = BashOperator(task_id="generate_randint", bash_command="shuf -i 1-100 -n 1", do_xcom_push=True)
 
-    retrieve_randint = PythonOperator(
-        task_id="retrieve_randint", python_callable=process_random
-    )
+    retrieve_randint = PythonOperator(task_id="retrieve_randint", python_callable=process_random)
 
     generate_randint >> retrieve_randint

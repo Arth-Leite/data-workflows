@@ -58,7 +58,6 @@ async def batch_save_book_info(queue: asyncio.Queue):
 
         async with aiofiles.open(OUTPUT_FILE, "a") as f:
             await f.write("\n".join(books) + "\n")
-
         # free the elements
         for _ in books:
             queue.task_done()
@@ -105,15 +104,11 @@ async def scrape_categories(session, category_url, queue):
         books_tasks = []
         for book in soup.select("h3 a[href]"):
             book_url = urljoin(category_url, book["href"])
-            books_tasks.append(
-                scrape_book_info(session=session, url=book_url, queue=queue)
-            )
+            books_tasks.append(scrape_book_info(session=session, url=book_url, queue=queue))
         await asyncio.gather(*books_tasks)
 
         if soup.select(".next a[href]"):  # next button
-            category_url = urljoin(
-                category_url, soup.select(".next a[href]")[0]["href"]
-            )
+            category_url = urljoin(category_url, soup.select(".next a[href]")[0]["href"])
         else:
             return
 

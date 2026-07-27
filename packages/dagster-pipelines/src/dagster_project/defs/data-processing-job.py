@@ -39,9 +39,7 @@ def generate_data(config: GenerateConfig) -> str:
 
 
 @op
-def calculate_salary_metrics(
-    context, input_filepath: str, config: MetricsConfig
-) -> None:
+def calculate_salary_metrics(context, input_filepath: str, config: MetricsConfig) -> None:
     result = duckdb.sql(
         f"SELECT position, sex, AVG(salary) as average_salary "
         f"FROM read_json_auto('{input_filepath}') "

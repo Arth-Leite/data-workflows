@@ -10,9 +10,7 @@ from kubernetes.client import (
 
 SHARED_VOLUME = V1Volume(
     name="task-outputs",
-    persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(
-        claim_name="task-outputs-pvc"
-    ),
+    persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(claim_name="task-outputs-pvc"),
 )
 
 SHARED_MOUNT = V1VolumeMount(
