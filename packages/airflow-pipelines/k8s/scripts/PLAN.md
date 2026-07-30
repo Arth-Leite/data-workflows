@@ -237,20 +237,33 @@ if __name__ == "__main__":
 
 ## Step 8 — Write the Dockerfile for task pods
 
-Create `pipelines/k8s/Dockerfile.task-runner`:
+Create `packages/airflow-pipelines/k8s/Dockerfile.task-runner`. It installs the
+`airflow-pipelines` package (and its shared `airflow_pipelines` task logic) from
+the workspace's root lockfile, the same way the main Airflow image does — instead
+of a separate hand-picked `pip install`:
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.13-slim
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-RUN pip install faker duckdb
+COPY pyproject.toml uv.lock ./
+COPY packages/airflow-pipelines/pyproject.toml packages/airflow-pipelines/pyproject.toml
+COPY packages/airflow-pipelines/src/ packages/airflow-pipelines/src/
 
-# Assuming we build from the 'pipelines' directory as context
-COPY k8s/scripts/ ./scripts/
+RUN uv sync --frozen --no-dev --package airflow-pipelines
 
-ENTRYPOINT ["python", "scripts/run_task.py"]
+COPY packages/airflow-pipelines/k8s/scripts/run_task.py ./run_task.py
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+ENTRYPOINT ["python", "run_task.py"]
 ```
+
+Because it needs the root `uv.lock`, the build context must be the **repository root**,
+not the `pipelines/` directory.
 
 ---
 
@@ -259,14 +272,14 @@ ENTRYPOINT ["python", "scripts/run_task.py"]
 Your tasks run as pods, so they need a Docker image that Minikube can access.
 
 Build the image **inside Minikube's Docker daemon** so it's immediately available
-without needing a registry. Run this from inside the `pipelines/` directory:
+without needing a registry. Run this from the **repository root**:
 
 ```bash
 # Point your shell's Docker CLI at Minikube's internal Docker daemon
 eval $(minikube docker-env)
 
 # Build the image (now it lives inside Minikube)
-docker build -t data-pipeline-task-runner:latest -f k8s/Dockerfile.task-runner .
+docker build -t data-pipeline-task-runner:latest -f packages/airflow-pipelines/k8s/Dockerfile.task-runner .
 ```
 
 Verify the image is there:
