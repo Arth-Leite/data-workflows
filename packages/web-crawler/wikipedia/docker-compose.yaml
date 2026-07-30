@@ -1,11 +1,11 @@
 services:
   crawler:
     build:
-      dockerfile: Dockerfile
+      context: ../../../
+      dockerfile: packages/web-crawler/wikipedia/Dockerfile
     volumes:
       - ./crawled_data:/app/crawled_data
     environment:
-      PYTHONPATH: /app
       OUTPUT_DIR: /app/crawled_data
       REDIS_HOST: redis
     command: python -m web_crawler.wikipedia.crawler
