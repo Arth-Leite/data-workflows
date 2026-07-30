@@ -8,6 +8,5 @@ REQUESTS_COUNT_DEFAULT = 20
 REQUESTS_DURATION_DEFAULT = 60
 CONCURRENCY = 2
 
-OUTPUT_DIR = "/Users/arthur.leite/Projects/data-workflows/packages/web-crawler/src/web_crawler/wikipedia/crawled_data/"
-if not os.path.exists(OUTPUT_DIR):
-    os.mkdir(OUTPUT_DIR)
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", "/usr/src/app/crawled_data/")
+os.makedirs(OUTPUT_DIR, exist_ok=True)

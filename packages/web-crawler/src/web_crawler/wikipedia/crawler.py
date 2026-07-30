@@ -24,7 +24,7 @@ class WikipediaScraper:
 
         self._start_robots_parser()
         self.swl = SlidingWindowLog(self.requests_count, self.requests_duration, minimum_delay=1)
-        self.redis = redis.Redis()
+        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
         self.redis_set = "wikipedia"
 
     def _start_robots_parser(self):

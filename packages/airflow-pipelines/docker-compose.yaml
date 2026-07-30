@@ -11,6 +11,3 @@ services:
     environment:
       - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=True
     command: standalone
-
-
-  
