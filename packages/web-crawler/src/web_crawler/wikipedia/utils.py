@@ -40,5 +40,4 @@ class SlidingWindowLog:
                     self.queue.append(ct)
                     return
 
-            print(f"Waiting for {time_to_wait}")
             await asyncio.sleep(time_to_wait)

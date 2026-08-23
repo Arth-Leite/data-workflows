@@ -1,19 +1,18 @@
 import asyncio
+import logging
 import os
-from urllib.parse import urljoin
-from urllib.robotparser import RobotFileParser
 
 import aiohttp
-import redis
+import redis.asyncio as redis
 
 from .constants import (
     CONCURRENCY,
     HEADERS,
-    OUTPUT_DIR,
     REQUESTS_COUNT_DEFAULT,
     REQUESTS_DURATION_DEFAULT,
     WIKIPEDIA_API_PHP_URL,
 )
+from .postgres.db import WikipediaCrawlerPostgresDB
 from .utils import SlidingWindowLog, rate_limited
 
 
@@ -24,20 +23,28 @@ class WikipediaScraper:
 
         self._start_robots_parser()
         self.swl = SlidingWindowLog(self.requests_count, self.requests_duration, minimum_delay=1)
+
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
         self.redis_set = "wikipedia"
+        logging.info("Redis set")
+
+        self.db: WikipediaCrawlerPostgresDB | None = None
+
+    async def _setup_db(self) -> None:
+        self.db = await WikipediaCrawlerPostgresDB.create()
+        logging.info("Postgres set")
 
     def _start_robots_parser(self):
-        self.robots_parser = RobotFileParser()
-        self.robots_parser.set_url(urljoin(self.base_url, "/robots.txt"))
-        self.robots_parser.read()
-
-        if self.robots_parser.request_rate("*"):
-            self.requests_count = self.robots_parser.request_rate("*").requests
-            self.requests_duration = self.robots_parser.request_rate("*").seconds
-        else:
-            self.requests_count = REQUESTS_COUNT_DEFAULT
-            self.requests_duration = REQUESTS_DURATION_DEFAULT
+        # self.robots_parser = RobotFileParser()
+        # self.robots_parser.set_url(urljoin(self.base_url, "/robots.txt"))
+        # self.robots_parser.read()
+        #
+        # if self.robots_parser.request_rate("*"):
+        #     self.requests_count = self.robots_parser.request_rate("*").requests
+        #     self.requests_duration = self.robots_parser.request_rate("*").seconds
+        # else:
+        self.requests_count = REQUESTS_COUNT_DEFAULT
+        self.requests_duration = REQUESTS_DURATION_DEFAULT
 
     async def _get_request(self, session: aiohttp.ClientSession, params: dict[str, str]) -> dict:
         async with session.get(self.base_url, params=params, headers=HEADERS) as response:
@@ -58,23 +65,17 @@ class WikipediaScraper:
 
     @rate_limited
     async def _request_text(self, session: aiohttp.ClientSession, title: str) -> None:
-        if self.redis.sismember(self.redis_set, title):
-            return
-
         response = await self._get_request(session, params=self._get_text_params(title))
 
         if "continue" in response:
-            print("There is a continue on the text content response")
-            print(response["query"]["pages"].values()[0]["title"])
+            raise NotImplementedError(
+                f"Wikipedia returned a 'continue' for the text extract of {title!r} - pagination isn't handled"
+            )
 
         pages = response["query"]["pages"]
         for page in pages.values():
-            title = page["title"]
-            # TODO: Use non-blocking aiofiles
-            with open(os.path.join(OUTPUT_DIR, f"{title}.txt"), "w") as f:
-                f.write(page["extract"])
-
-            self.redis.sadd(self.redis_set, title)
+            await self.db.insert_row(page_title=page["title"], page_id=page["pageid"], page_content=page["extract"])
+            logging.info(f"Row inserted for page {page['title']}")
 
     @rate_limited
     async def _request_links(self, session: aiohttp.ClientSession, title: str):
@@ -98,36 +99,51 @@ class WikipediaScraper:
 
         return titles
 
-    async def _crawl_worker(self, session: aiohttp.ClientSession, queue: asyncio.Queue, visited: set, pages_limit: int):
-        pages_crawled = 0
-        while pages_crawled < pages_limit:
+    async def _crawl_worker(self, session: aiohttp.ClientSession, queue: asyncio.Queue, pages_limit: int):
+        while self._pages_crawled < pages_limit:
             title = await queue.get()
+            try:
+                added = await self.redis.sadd(self.redis_set, title)
+                if not added:
+                    continue
 
-            if title in visited:
-                print(f"Page {title} has already been visited")
-                continue
+                await self._request_text(session, title)
+                new_titles = await self._request_links(session, title)
 
-            await self._request_text(session, title)
-            new_titles = await self._request_links(session, title)
+                for new_title in new_titles:
+                    queue.put_nowait(new_title)
 
-            for title in new_titles:
-                queue.put_nowait(title)
+                self._pages_crawled += 1
 
-            pages_crawled += 1
+                logging.info(f"Page {title} scraped")
+            finally:
+                queue.task_done()
 
     async def crawl(self, pages_limit: int = 50):
+        await self._setup_db()
+
         queue = asyncio.Queue()
         for article in self.seed_articles:
             queue.put_nowait(article)
 
-        visited = set()
+        self._pages_crawled = 0
 
         async with aiohttp.ClientSession() as session:
-            await asyncio.gather(
-                *[self._crawl_worker(session, queue, visited, pages_limit) for _ in range(CONCURRENCY)]
-            )
+            # The workers already start here even with no await
+            workers = [asyncio.create_task(self._crawl_worker(session, queue, pages_limit)) for _ in range(CONCURRENCY)]
+
+        # This will only finish once the queue has all the items marked as done
+        await queue.join()
+
+        for worker in workers:
+            worker.cancel()
+
+        # Here it waits until all the workers finish
+        await asyncio.gather(*workers)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.info("Starting Wikipedia Crawler")
     wiki_crawl = WikipediaScraper()
     asyncio.run(wiki_crawl.crawl())
