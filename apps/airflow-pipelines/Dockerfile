@@ -7,8 +7,8 @@ WORKDIR /opt/airflow
 
 # Cache the packages first - copy files later
 COPY pyproject.toml uv.lock ./
-COPY packages/airflow-pipelines/pyproject.toml packages/airflow-pipelines/pyproject.toml
-COPY packages/airflow-pipelines/src/ packages/airflow-pipelines/src/
+COPY apps/airflow-pipelines/pyproject.toml apps/airflow-pipelines/pyproject.toml
+COPY apps/airflow-pipelines/src/ apps/airflow-pipelines/src/
 RUN uv sync --frozen --no-dev --inexact --package airflow-pipelines
 
-COPY packages/airflow-pipelines/dags/ dags/
+COPY apps/airflow-pipelines/dags/ dags/

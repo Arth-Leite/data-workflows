@@ -237,7 +237,7 @@ if __name__ == "__main__":
 
 ## Step 8 — Write the Dockerfile for task pods
 
-Create `packages/airflow-pipelines/k8s/Dockerfile.task-runner`. It installs the
+Create `apps/airflow-pipelines/k8s/Dockerfile.task-runner`. It installs the
 `airflow-pipelines` package (and its shared `airflow_pipelines` task logic) from
 the workspace's root lockfile, the same way the main Airflow image does — instead
 of a separate hand-picked `pip install`:
@@ -250,12 +250,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-COPY packages/airflow-pipelines/pyproject.toml packages/airflow-pipelines/pyproject.toml
-COPY packages/airflow-pipelines/src/ packages/airflow-pipelines/src/
+COPY apps/airflow-pipelines/pyproject.toml apps/airflow-pipelines/pyproject.toml
+COPY apps/airflow-pipelines/src/ apps/airflow-pipelines/src/
 
 RUN uv sync --frozen --no-dev --package airflow-pipelines
 
-COPY packages/airflow-pipelines/k8s/scripts/run_task.py ./run_task.py
+COPY apps/airflow-pipelines/k8s/scripts/run_task.py ./run_task.py
 
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -279,7 +279,7 @@ without needing a registry. Run this from the **repository root**:
 eval $(minikube docker-env)
 
 # Build the image (now it lives inside Minikube)
-docker build -t data-pipeline-task-runner:latest -f packages/airflow-pipelines/k8s/Dockerfile.task-runner .
+docker build -t data-pipeline-task-runner:latest -f apps/airflow-pipelines/k8s/Dockerfile.task-runner .
 ```
 
 Verify the image is there:

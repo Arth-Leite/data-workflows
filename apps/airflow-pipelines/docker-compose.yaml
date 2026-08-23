@@ -2,7 +2,7 @@ services:
   airflow:
     build:
       context: ../../
-      dockerfile: packages/airflow-pipelines/Dockerfile
+      dockerfile: apps/airflow-pipelines/Dockerfile
     ports:
       - 8080:8080
     volumes:

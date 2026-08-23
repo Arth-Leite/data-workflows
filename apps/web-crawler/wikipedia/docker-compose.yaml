@@ -8,7 +8,7 @@ services:
     container_name: wikipedia_crawler
     build:
       context: ../../../
-      dockerfile: packages/web-crawler/wikipedia/Dockerfile
+      dockerfile: apps/web-crawler/wikipedia/Dockerfile
     environment:
       <<: *db-env
       OUTPUT_DIR: /app/crawled_data

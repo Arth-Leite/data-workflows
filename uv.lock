@@ -185,7 +185,7 @@ wheels = [
 [[package]]
 name = "airflow-pipelines"
 version = "0.1.0"
-source = { editable = "packages/airflow-pipelines" }
+source = { editable = "apps/airflow-pipelines" }
 dependencies = [
     { name = "duckdb" },
     { name = "faker" },
@@ -1035,7 +1035,7 @@ wheels = [
 [[package]]
 name = "dagster-pipelines"
 version = "0.1.0"
-source = { editable = "packages/dagster-pipelines" }
+source = { editable = "apps/dagster-pipelines" }
 dependencies = [
     { name = "dagster" },
     { name = "duckdb" },
@@ -1120,7 +1120,7 @@ wheels = [
 [[package]]
 name = "data-workflows"
 version = "0.1.0"
-source = { editable = "packages/shared" }
+source = { editable = "apps/shared" }
 dependencies = [
     { name = "duckdb" },
     { name = "faker" },
@@ -4023,7 +4023,7 @@ wheels = [
 [[package]]
 name = "web-crawler"
 version = "0.1.0"
-source = { editable = "packages/web-crawler" }
+source = { editable = "apps/web-crawler" }
 dependencies = [
     { name = "aiohttp" },
     { name = "asyncpg" },

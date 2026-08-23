@@ -5,12 +5,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-COPY packages/airflow-pipelines/pyproject.toml packages/airflow-pipelines/pyproject.toml
-COPY packages/airflow-pipelines/src/ packages/airflow-pipelines/src/
+COPY apps/airflow-pipelines/pyproject.toml apps/airflow-pipelines/pyproject.toml
+COPY apps/airflow-pipelines/src/ apps/airflow-pipelines/src/
 
 RUN uv sync --frozen --no-dev --package airflow-pipelines
 
-COPY packages/airflow-pipelines/k8s/scripts/run_task.py ./run_task.py
+COPY apps/airflow-pipelines/k8s/scripts/run_task.py ./run_task.py
 
 ENV PATH="/app/.venv/bin:$PATH"
 
