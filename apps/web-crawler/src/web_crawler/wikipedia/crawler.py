@@ -116,6 +116,8 @@ class WikipediaScraper:
                 self._pages_crawled += 1
 
                 logging.info(f"Page {title} scraped")
+            # TODO Implement Except
+            # except: pass
             finally:
                 queue.task_done()
 
