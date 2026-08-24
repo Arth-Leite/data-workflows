@@ -129,17 +129,16 @@ class WikipediaScraper:
         self._pages_crawled = 0
 
         async with aiohttp.ClientSession() as session:
-            # The workers already start here even with no await
             workers = [asyncio.create_task(self._crawl_worker(session, queue, pages_limit)) for _ in range(CONCURRENCY)]
 
-        # This will only finish once the queue has all the items marked as done
-        await queue.join()
+            # This will only finish once the queue has all the items marked as done
+            await queue.join()
 
-        for worker in workers:
-            worker.cancel()
+            for worker in workers:
+                worker.cancel()
 
-        # Here it waits until all the workers finish
-        await asyncio.gather(*workers)
+            # Here it waits until all the workers finish; cancellation is expected here
+            await asyncio.gather(*workers, return_exceptions=True)
 
 
 if __name__ == "__main__":
