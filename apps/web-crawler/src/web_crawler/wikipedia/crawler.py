@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 
 import aiohttp
 import redis.asyncio as redis
@@ -86,6 +87,9 @@ class WikipediaScraper:
 
             for page in pages.values():
                 titles.extend([link["title"] for link in page["links"]])
+
+        # Shuffle list to avoid scraping in alphabetical order
+        random.shuffle(titles)
 
         return titles
 
