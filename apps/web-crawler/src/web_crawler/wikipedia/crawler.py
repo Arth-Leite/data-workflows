@@ -26,23 +26,14 @@ class WikipediaScraper:
 
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
         self.redis_set = "wikipedia"
-        logging.info("Redis set")
 
         self.db: WikipediaCrawlerPostgresDB | None = None
 
     async def _setup_db(self) -> None:
         self.db = await WikipediaCrawlerPostgresDB.create()
-        logging.info("Postgres set")
 
     def _start_robots_parser(self):
-        # self.robots_parser = RobotFileParser()
-        # self.robots_parser.set_url(urljoin(self.base_url, "/robots.txt"))
-        # self.robots_parser.read()
-        #
-        # if self.robots_parser.request_rate("*"):
-        #     self.requests_count = self.robots_parser.request_rate("*").requests
-        #     self.requests_duration = self.robots_parser.request_rate("*").seconds
-        # else:
+        # TODO: Implement a real robots parser
         self.requests_count = REQUESTS_COUNT_DEFAULT
         self.requests_duration = REQUESTS_DURATION_DEFAULT
 
@@ -75,7 +66,6 @@ class WikipediaScraper:
         pages = response["query"]["pages"]
         for page in pages.values():
             await self.db.insert_row(page_title=page["title"], page_id=page["pageid"], page_content=page["extract"])
-            logging.info(f"Row inserted for page {page['title']}")
 
     @rate_limited
     async def _request_links(self, session: aiohttp.ClientSession, title: str):
@@ -116,9 +106,10 @@ class WikipediaScraper:
                 await self.redis.sadd(self.redis_set, title)
                 self._pages_crawled += 1
 
-                logging.info(f"Page {title} scraped")
-            # TODO Implement Except
-            # except: pass
+                logging.info(f"Scraped {title}")
+
+            except Exception as e:
+                raise (e)
             finally:
                 queue.task_done()
 
