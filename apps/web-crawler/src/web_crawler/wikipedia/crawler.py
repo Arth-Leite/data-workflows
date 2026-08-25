@@ -89,7 +89,9 @@ class WikipediaScraper:
 
         return titles
 
-    async def _crawl_worker(self, session: aiohttp.ClientSession, queue: asyncio.Queue, pages_limit: int):
+    async def _crawl_worker(
+        self, session: aiohttp.ClientSession, queue: asyncio.Queue, pages_limit: int, event: asyncio.Event
+    ):
         while self._pages_crawled < pages_limit:
             title = await queue.get()
             try:
@@ -112,6 +114,7 @@ class WikipediaScraper:
                 raise (e)
             finally:
                 queue.task_done()
+        event.set()
 
     async def crawl(self, pages_limit: int = 50):
         await self._setup_db()
@@ -123,16 +126,31 @@ class WikipediaScraper:
         self._pages_crawled = 0
 
         async with aiohttp.ClientSession() as session:
-            workers = [asyncio.create_task(self._crawl_worker(session, queue, pages_limit)) for _ in range(CONCURRENCY)]
+            pages_limit_event = asyncio.Event()
 
-            # This will only finish once the queue has all the items marked as done
-            await queue.join()
+            workers = {
+                asyncio.create_task(self._crawl_worker(session, queue, pages_limit, pages_limit_event))
+                for _ in range(CONCURRENCY)
+            }
 
-            for worker in workers:
-                worker.cancel()
+            finishing_tasks = {asyncio.create_task(pages_limit_event.wait()), asyncio.create_task(queue.join())}
+            awaitables = workers | finishing_tasks
+            while True:
+                done, pending = await asyncio.wait(awaitables, return_when=asyncio.FIRST_COMPLETED)
+                if done.intersection(set(finishing_tasks)):
+                    break
 
-            # Here it waits until all the workers finish; cancellation is expected here
-            await asyncio.gather(*workers, return_exceptions=True)
+                awaitables -= done
+                awaitables |= {
+                    asyncio.create_task(self._crawl_worker(session, queue, pages_limit, pages_limit_event))
+                    for _ in range(len(done))
+                }
+
+            for task in awaitables:
+                task.cancel()
+
+            # Here it waits until all the tasks finish
+            await asyncio.gather(*awaitables, return_exceptions=True)
 
 
 if __name__ == "__main__":
