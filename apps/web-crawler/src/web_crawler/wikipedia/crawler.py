@@ -103,8 +103,8 @@ class WikipediaScraper:
         while self._pages_crawled < pages_limit:
             title = await queue.get()
             try:
-                added = await self.redis.sadd(self.redis_set, title)
-                if not added:
+                ismember = await self.redis.sismember(self.redis_set, title)
+                if ismember == 1:
                     continue
 
                 await self._request_text(session, title)
@@ -113,6 +113,7 @@ class WikipediaScraper:
                 for new_title in new_titles:
                     queue.put_nowait(new_title)
 
+                await self.redis.sadd(self.redis_set, title)
                 self._pages_crawled += 1
 
                 logging.info(f"Page {title} scraped")
