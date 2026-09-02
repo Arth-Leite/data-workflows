@@ -131,6 +131,7 @@ class WikipediaScraper:
 
         async with aiohttp.ClientSession() as session:
             pages_limit_event = asyncio.Event()
+            redis_empty_queue_event = asyncio.Event()
 
             workers = {
                 asyncio.create_task(self._crawl_worker(session, queue, pages_limit, pages_limit_event))
@@ -161,4 +162,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.info("Starting Wikipedia Crawler")
     wiki_crawl = WikipediaScraper()
-    asyncio.run(wiki_crawl.crawl())
+    asyncio.run(wiki_crawl.crawl(pages_limit=300))
+    logging.info("Crawler ended")

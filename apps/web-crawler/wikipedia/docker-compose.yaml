@@ -15,12 +15,13 @@ services:
       REDIS_HOST: redis
       POSTGRES_HOST: postgres # postgres service name, not localhost
       PYTHONUNBUFFERED: "1"
-    command: python -m web_crawler.wikipedia.postgres.db
+    command: python -m web_crawler.wikipedia.crawler
     depends_on:
       redis:
         condition: service_started
       postgres:
         condition: service_healthy
+    restart: on-failure
 
   redis:
     container_name: crawler_redis

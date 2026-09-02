@@ -65,7 +65,6 @@ if __name__ == "__main__":
 
     async def test_db():
         db = await WikipediaCrawlerPostgresDB.create()
-        await db.insert_row("test", 1, "test")
         await db.read_table()
 
     asyncio.run(test_db())
