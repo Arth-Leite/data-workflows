@@ -3,20 +3,18 @@ import logging
 import os
 import random
 
-import aio_pika
 import aiohttp
 import redis.asyncio as redis
-from aio_pika.message import IncomingMessage
-
-from .constants import (
+from web_crawler.wikipedia.broker import RabbitBroker
+from web_crawler.wikipedia.constants import (
     CONCURRENCY,
     HEADERS,
     REQUESTS_COUNT_DEFAULT,
     REQUESTS_DURATION_DEFAULT,
     WIKIPEDIA_API_PHP_URL,
 )
-from .postgres.db import WikipediaCrawlerPostgresDB
-from .utils import SlidingWindowLog, rate_limited
+from web_crawler.wikipedia.postgres.db import WikipediaCrawlerPostgresDB
+from web_crawler.wikipedia.utils import SlidingWindowLog, rate_limited
 
 
 class WikipediaScraper:
@@ -30,8 +28,9 @@ class WikipediaScraper:
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
         self.redis_set = "wikipedia"
 
-    async def _setup_db(self) -> None:
+    async def _setup(self) -> None:
         self.db = await WikipediaCrawlerPostgresDB.create()
+        self.broker = RabbitBroker()
 
     def _start_robots_parser(self):
         # TODO: Implement a real robots parser
@@ -98,10 +97,9 @@ class WikipediaScraper:
         session: aiohttp.ClientSession,
     ):
         while self._pages_crawled < self.pages_limit:
-            message = await self._get_message()
-            if not message:
+            title = await self.broker.get_message()
+            if not title:
                 continue
-            title = message.body.decode("utf-8")
             try:
                 ismember = await self.redis.sismember(self.redis_set, title)
                 if ismember == 1:
@@ -111,7 +109,7 @@ class WikipediaScraper:
                 new_titles = await self._request_links(session, title)
 
                 for new_title in new_titles:
-                    await self._publish_message(new_title)
+                    await self.broker.publish_message(new_title)
 
                 await self.redis.sadd(self.redis_set, title)
                 self._pages_crawled += 1
@@ -121,49 +119,21 @@ class WikipediaScraper:
             except Exception as e:
                 raise (e)
             finally:
-                await self._ack_message(message)
+                await self.broker.ack_message(title)
         self.pages_limit_event.set()
 
-    async def _get_message(self) -> IncomingMessage | None:
-        message = await self.queue.get(
-            no_ack=False,  # no_ack=True means autoack once the message is delivered
-            fail=False,
-            timeout=10,
-        )
-        return message
-
-    async def _ack_message(self, message: IncomingMessage):
-        await message.ack()
-        self.message_count -= 1
-        if self.message_count == 0:
-            self.wait_queue_drained.set()
-
-    async def _publish_message(self, message: str) -> None:
-        await self.channel.default_exchange.publish(
-            message=aio_pika.Message(body=message.encode("utf-8"), delivery_mode=aio_pika.DeliveryMode.PERSISTENT),
-            routing_key=self.queue.name,
-        )
-        self.message_count += 1
-
     async def crawl(self, pages_limit: int = 50):
-        await self._setup_db()
+        await self._setup()
 
         self._pages_crawled = 0
         self.pages_limit = pages_limit
 
-        rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
-        connection = await aio_pika.connect(f"amqp://admin:admin@{rabbitmq_host}/")
-
-        async with aiohttp.ClientSession() as session, connection:
+        async with aiohttp.ClientSession() as session:
             self.pages_limit_event = asyncio.Event()
             self.wait_queue_drained = asyncio.Event()
 
-            self.channel = await connection.channel()
-            self.queue = await self.channel.declare_queue("titles", durable=True)
-            self.message_count = self.queue.declaration_result.message_count
-
             for article in self.seed_articles:
-                await self._publish_message(article)
+                await self.broker.publish_message(article)
 
             workers = {asyncio.create_task(self._crawl_worker(session)) for _ in range(CONCURRENCY)}
 
