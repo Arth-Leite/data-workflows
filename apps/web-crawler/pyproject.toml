@@ -9,6 +9,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     "beautifulsoup4>=4.15.0",
     "debugpy>=1.8.0",
+    "monkeytype>=23.3.0",
     "playwright>=1.60.0",
     "redis>=8.0.1",
 ]
