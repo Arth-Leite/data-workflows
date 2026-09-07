@@ -9,17 +9,25 @@ services:
     build:
       context: ../../../
       dockerfile: apps/web-crawler/wikipedia/Dockerfile
+    ports:
+      - "5678:5678"
     environment:
       <<: *db-env
       OUTPUT_DIR: /app/crawled_data
       REDIS_HOST: redis
       POSTGRES_HOST: postgres # postgres service name, not localhost
+      RABBITMQ_HOST: rabbitmq
       PYTHONUNBUFFERED: "1"
-    command: python -m web_crawler.wikipedia.crawler
+    volumes:
+      - ../src/web_crawler:/app/apps/web-crawler/src/web_crawler
+    command: sh -c "uv sync --frozen --no-dev --package web-crawler && python -m web_crawler.wikipedia"
+    # command: sh -c "uv sync --frozen --no-dev --package web-crawler && python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m web_crawler.wikipedia.crawler"
     depends_on:
       redis:
         condition: service_started
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: on-failure
 
@@ -30,6 +38,12 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: redis-cli ping
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 20s
 
   postgres:
     container_name: crawler_postgres
@@ -41,13 +55,31 @@ services:
     volumes:
       - db-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 1m30s
       timeout: 30s
       retries: 5
       start_period: 20s
 
+  rabbitmq:
+    container_name: crawler_rabbitmq
+    image: rabbitmq:4.3.5-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - "5672:5672"
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 20s
+
 volumes:
   redis-data:
   db-data:
-
+  rabbit-data:
