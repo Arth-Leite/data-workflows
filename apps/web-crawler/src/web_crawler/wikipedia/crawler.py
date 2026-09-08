@@ -1,11 +1,8 @@
 import asyncio
 import logging
-import os
 import random
 
 import aiohttp
-import redis.asyncio as redis
-from web_crawler.wikipedia.broker import RabbitBroker
 from web_crawler.wikipedia.constants import (
     CONCURRENCY,
     HEADERS,
@@ -13,6 +10,7 @@ from web_crawler.wikipedia.constants import (
     REQUESTS_DURATION_DEFAULT,
     WIKIPEDIA_API_PHP_URL,
 )
+from web_crawler.wikipedia.frontier import RabbitRedisFrontier
 from web_crawler.wikipedia.postgres.db import WikipediaCrawlerPostgresDB
 from web_crawler.wikipedia.utils import SlidingWindowLog, rate_limited
 
@@ -25,12 +23,9 @@ class WikipediaScraper:
         self._start_robots_parser()
         self.swl = SlidingWindowLog(self.requests_count, self.requests_duration, minimum_delay=1)
 
-        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
-        self.redis_set = "wikipedia"
-
     async def _setup(self) -> None:
         self.db = await WikipediaCrawlerPostgresDB.create()
-        self.broker = RabbitBroker()
+        self.frontier = RabbitRedisFrontier()
 
     def _start_robots_parser(self):
         # TODO: Implement a real robots parser
@@ -97,21 +92,20 @@ class WikipediaScraper:
         session: aiohttp.ClientSession,
     ):
         while self._pages_crawled < self.pages_limit:
-            title = await self.broker.get_message()
+            title = await self.frontier.get_message()
             if not title:
                 continue
             try:
-                ismember = await self.redis.sismember(self.redis_set, title)
-                if ismember == 1:
+                if await self.frontier.has_visited(title):
                     continue
 
                 await self._request_text(session, title)
                 new_titles = await self._request_links(session, title)
 
                 for new_title in new_titles:
-                    await self.broker.publish_message(new_title)
+                    await self.frontier.publish_message(new_title)
 
-                await self.redis.sadd(self.redis_set, title)
+                await self.frontier.mark_as_visited(title)
                 self._pages_crawled += 1
 
                 logging.info(f"Scraped {title}")
@@ -119,7 +113,7 @@ class WikipediaScraper:
             except Exception as e:
                 raise (e)
             finally:
-                await self.broker.ack_message(title)
+                await self.frontier.ack_message(title)
         self.pages_limit_event.set()
 
     async def crawl(self, pages_limit: int = 50):
@@ -130,16 +124,15 @@ class WikipediaScraper:
 
         async with aiohttp.ClientSession() as session:
             self.pages_limit_event = asyncio.Event()
-            self.wait_queue_drained = asyncio.Event()
 
             for article in self.seed_articles:
-                await self.broker.publish_message(article)
+                await self.frontier.publish_message(article)
 
             workers = {asyncio.create_task(self._crawl_worker(session)) for _ in range(CONCURRENCY)}
 
             finishing_tasks = {
                 asyncio.create_task(self.pages_limit_event.wait()),
-                asyncio.create_task(self.wait_queue_drained.wait()),
+                asyncio.create_task(self.frontier.wait_queue_drained.wait()),
             }
             awaitables = workers | finishing_tasks
             while True:

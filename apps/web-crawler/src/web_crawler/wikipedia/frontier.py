@@ -1,11 +1,16 @@
+import asyncio
 import os
 from abc import ABC
 
 import aio_pika
+import redis.asyncio as redis
 
 
-class MessageBroker(ABC):
-    async def get_new_message(self):
+class Frontier(ABC):
+    def __init__(self) -> None:
+        self.wait_queue_drained = asyncio.Event()
+
+    async def get_message(self):
         pass
 
     async def publish_message(self, message: str):
@@ -14,13 +19,20 @@ class MessageBroker(ABC):
     async def ack_message(self, message):
         pass
 
+    async def has_visited(self, content: str):
+        pass
+
+    async def mark_as_visited(self, content: str):
+        pass
+
     @classmethod
-    def create(cls) -> "MessageBroker":
+    def create(cls) -> "Frontier":
         pass
 
 
-class RabbitBroker(MessageBroker):
+class RabbitRedisFrontier(Frontier):
     def __init__(self) -> None:
+        super().__init__()
         self.queue = None
         self.channel = None
         self.message_ref_dict = dict()
@@ -31,6 +43,19 @@ class RabbitBroker(MessageBroker):
         self.channel = await self.connection.channel()
         self.queue = await self.channel.declare_queue("titles", durable=True)
         self.message_count = self.queue.declaration_result.message_count or 0
+
+        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
+        self.redis_set = "wikipedia"
+
+    async def has_visited(self, content: str):
+        ismember = await self.redis.sismember(self.redis_set, content)
+        if ismember == 1:
+            return True
+        else:
+            return False
+
+    async def mark_as_visited(self, content: str):
+        await self.redis.sadd(self.redis_set, content)
 
     async def get_message(self) -> str:
         if self.queue is None:
@@ -48,6 +73,8 @@ class RabbitBroker(MessageBroker):
         message_ref = self.message_ref_dict[message]
         await message_ref.ack()
         self.message_count -= 1
+        if self.message_count == 0:
+            self.wait_queue_drained.set()
 
     async def publish_message(self, message: str) -> None:
         if self.channel is None:
@@ -58,10 +85,3 @@ class RabbitBroker(MessageBroker):
             routing_key=self.queue.name,
         )
         self.message_count += 1
-
-    async def is_queue_drained(self) -> bool:
-        if self.message_count == 0:
-            self.channel.close()
-            return True
-        else:
-            return False
