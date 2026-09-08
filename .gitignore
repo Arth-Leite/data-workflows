@@ -16,8 +16,8 @@ dist/
 
 # Project related
 task-outputs/
-monkeytype-data/*
-!monkeytype-data/.gitkeep
+**/monkeytype-data/*
+!**/monkeytype-data/.gitkeep
 
 # macOS
 .DS_Store
