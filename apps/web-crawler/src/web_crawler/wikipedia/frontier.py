@@ -30,6 +30,18 @@ class Frontier(ABC):
         pass
 
 
+class PostgresFrontier(Frontier):
+    @classmethod
+    async def create(cls) -> "PostgresFrontier":
+        pool = await cls._generate_pool()
+        frontier = cls(pool)
+        await frontier._db_init()
+        return frontier
+
+    async def get_message(self):
+        return await super().get_message()
+
+
 class RabbitRedisFrontier(Frontier):
     def __init__(self) -> None:
         super().__init__()
