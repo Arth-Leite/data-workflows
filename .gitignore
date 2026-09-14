@@ -16,6 +16,7 @@ dist/
 
 # Project related
 task-outputs/
+apps/web-crawler/src/web_crawler/learning/
 **/monkeytype-data/*
 !**/monkeytype-data/.gitkeep
 
