@@ -1,4 +1,4 @@
-# dagster_project
+# dagster_pipelines
 
 ## Getting started
 
