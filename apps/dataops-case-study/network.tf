@@ -1,25 +1,3 @@
-terraform {
-  required_version = ">= 1.16.3"
-
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 8.0"
-    }
-  }
-}
-
-provider "google" {
-  region  = var.region
-  project = var.project_id
-}
-
-resource "google_project_service" "compute" {
-  project            = var.project_id
-  service            = "compute.googleapis.com"
-  disable_on_destroy = false
-}
-
 resource "google_compute_network" "gke_vpc" {
   name                    = "dataops-vpc"
   auto_create_subnetworks = false
