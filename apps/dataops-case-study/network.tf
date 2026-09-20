@@ -13,6 +13,7 @@ resource "google_compute_subnetwork" "gke_nodes" {
   region        = var.region
   network       = google_compute_network.gke_vpc.id
 
+  # GKE reserves /24 per node. So this will give us max 1024 nodes
   secondary_ip_range {
     range_name    = "pods"
     ip_cidr_range = "10.4.0.0/14"
