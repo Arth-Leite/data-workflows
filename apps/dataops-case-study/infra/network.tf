@@ -1,3 +1,9 @@
+resource "google_project_service" "compute" {
+  project            = var.project_id
+  service            = "compute.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_compute_network" "gke_vpc" {
   name                    = "dataops-vpc"
   auto_create_subnetworks = false
