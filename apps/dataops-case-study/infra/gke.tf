@@ -3,6 +3,12 @@ locals {
   node_zones = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
 }
 
+resource "google_project_service" "container" {
+  project            = var.project_id
+  service            = "container.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_container_cluster" "gke" {
   name = "dataops-cluster"
 
