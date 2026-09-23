@@ -47,3 +47,4 @@ terraform.rc
 
 .TODO
 .venv
+__pycache__/
