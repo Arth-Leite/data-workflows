@@ -27,3 +27,32 @@ gke-dataops-cheap-as-possibl-ca6a94b8-4rvf   Ready    <none>   63m    v1.35.8-gk
 ```
 
 Note: I've tried first with autoscaler bounds but it kept only a single node running since there were no pods pending to trigger the autoscaler, so I've changed to a fixed node count per zone to ensure we respect the "Create the cluster in such that it is deployed in all available zones".
+
+### Q3 - FastAPI hello-world exposed to a single IP
+
+We need to first push the new docker image so that the pod can start.
+
+```bash
+gcloud auth configure-docker europe-west1-docker.pkg.dev
+# important to choose the platform, otherwise it will push arm
+docker build --platform linux/amd64 -t europe-west1-docker.pkg.dev/dataops-case-study-509018/dataops/fast-api-hello:latest apps/fast-api-hello
+docker push europe-west1-docker.pkg.dev/dataops-case-study-509018/dataops/fast-api-hello:latest
+```
+
+I've got my own IP with ` curl -4 ifconfig.me` and added to `terraform.tfvars`.
+
+```bash
+❯ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+fast-api-hello-7f48577f5c-pvrll   1/1     Running   0          7m52s
+
+❯ terraform output
+fast_api_hello_url = "http://34.34.184.85"
+
+❯ curl http://34.34.184.85
+"Hello world"%
+```
+
+I also checked if the app was blocking all IPs except mine, which I could easily verify with Firewall rules on the GCP Console.
+
+Note: I bumped the resources on gke from 12GB to 20GB and used e2-small instead of e2-micro. The pods were having a very hard time pulling the image, which took almost 15 min. Although there is a very small increase in price I think it is worth it, the system will be much more reliable, even if we keep our super simple hello world.
