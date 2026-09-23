@@ -41,10 +41,9 @@ resource "google_container_node_pool" "gke" {
 
   # minimum on everything
   node_config {
-    # e2-micro is the cheapest, but it is probably too small, e2-small is
-    # likely necessary
-    machine_type = "e2-micro"
-    disk_size_gb = 12
+    # e2-micro is the cheapest, but it is too small
+    machine_type = "e2-small"
+    disk_size_gb = 20
     disk_type    = "pd-standard"
     spot         = true
 
