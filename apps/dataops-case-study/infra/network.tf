@@ -4,6 +4,7 @@ resource "google_project_service" "compute" {
   disable_on_destroy = false
 }
 
+# Our private network. Subnets are defined by hand instead of one per region
 resource "google_compute_network" "gke_vpc" {
   name                    = "dataops-vpc"
   auto_create_subnetworks = false
@@ -30,4 +31,33 @@ resource "google_compute_subnetwork" "gke_nodes" {
     ip_cidr_range = "10.8.0.0/20"
   }
 
+}
+
+resource "google_project_service" "servicenetworking" {
+  project            = var.project_id
+  service            = "servicenetworking.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Reserve an IP range in the VPC to use with CloudSQL later
+resource "google_compute_global_address" "cloudsql_psa" {
+  name         = "cloudsql-psa"
+  purpose      = "VPC_PEERING"
+  address_type = "INTERNAL"
+  network      = google_compute_network.gke_vpc.id
+  # Ensure we don't overlap with the others
+  address       = "10.16.0.0"
+  prefix_length = 20
+}
+
+# Google wil build its side with the reserved range and peers it with my VPC.
+resource "google_service_networking_connection" "cloudsql" {
+  network                 = google_compute_network.gke_vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.cloudsql_psa.name]
+
+  # ensure we can delete correctly
+  deletion_policy = "REMOVE_PEERING"
+
+  depends_on = [google_project_service.servicenetworking]
 }
