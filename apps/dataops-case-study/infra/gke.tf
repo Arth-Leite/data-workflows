@@ -26,6 +26,11 @@ resource "google_container_cluster" "gke" {
     services_secondary_range_name = "services"
   }
 
+  # Lets pods authenticate as their own Google service account (used to reach Cloud SQL)
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
   deletion_protection = false
 
   depends_on = [google_project_service.container, google_compute_subnetwork.gke_nodes]
@@ -50,5 +55,10 @@ resource "google_container_node_pool" "gke" {
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
     ]
+
+    # Serve Workload Identity tokens to pods instead of the node's credentials
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
   }
 }
