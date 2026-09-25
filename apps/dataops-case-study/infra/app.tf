@@ -164,4 +164,9 @@ resource "kubernetes_service_v1" "fast_api_hello" {
     # Q3: expose to your IP only.
     load_balancer_source_ranges = [var.my_ip]
   }
+
+  lifecycle {
+    # Added by GKE's load balancer controller, not managed here
+    ignore_changes = [metadata[0].annotations["networking.gke.io/target-pool"]]
+  }
 }
