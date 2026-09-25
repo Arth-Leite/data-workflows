@@ -53,6 +53,24 @@ fast_api_hello_url = "http://34.34.184.85"
 "Hello world"%
 ```
 
-I also checked if the app was blocking all IPs except mine, which I could easily verify with Firewall rules on the GCP Console.
+I also checked if the app was blocking all IPs except mine, which I could easily verify with [Firewall policies](https://console.cloud.google.com/net-security/firewall-manager/firewall-policies/list?referrer=search&authuser=1&project=dataops-case-study-509018) rules on the GCP Console.
+
+```bash
+❯ bat terraform.tfvars
+─────┬────────────────────────────────────────
+     │ File: terraform.tfvars
+─────┼────────────────────────────────────────
+   1 │ my_ip = "78.242.185.91/32"
+─────┴────────────────────────────────────────
+
+❯ gcloud compute firewall-rules list --project=dataops-case-study-509018 \
+  --format="table(name,sourceRanges.list(),allowed[].map().firewall_rule().list():label=ALLOW,denied[].map().firewall_rule().list():label=DENY,priority)"
+NAME                                          SOURCE_RANGES                                                 ALLOW                         DENY  PRIORITY
+gke-dataops-cluster-1f866ecf-all     10.4.0.0/14                                                   esp,ah,sctp,tcp,udp,icmp            1000
+gke-dataops-cluster-1f866ecf-vms     10.0.0.0/20                                                   udp:1-65535,icmp,tcp:1-65535        1000
+k8s-41662838684fd66a-node-http-hc             130.211.0.0/22,35.191.0.0/16,209.85.152.0/22,209.85.204.0/22  tcp:10256                           999
+k8s-fw-a4b440983d959485889d9c5ad1e5ebee       78.242.185.91/32                                              tcp:80                              999
+k8s-fw-a4b440983d959485889d9c5ad1e5ebee-deny  0.0.0.0/0                                                                                   all   1000
+```
 
 Note: I bumped the resources on gke from 12GB to 20GB and used e2-small instead of e2-micro. The pods were having a very hard time pulling the image, which took almost 15 min. Although there is a very small increase in price I think it is worth it, the system will be much more reliable, even if we keep our super simple hello world.
