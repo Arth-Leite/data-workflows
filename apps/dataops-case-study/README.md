@@ -74,3 +74,70 @@ k8s-fw-a4b440983d959485889d9c5ad1e5ebee-deny  0.0.0.0/0                         
 ```
 
 Note: I bumped the resources on gke from 12GB to 20GB and used e2-small instead of e2-micro. The pods were having a very hard time pulling the image, which took almost 15 min. Although there is a very small increase in price I think it is worth it, the system will be much more reliable, even if we keep our super simple hello world.
+
+### Q4 - FastAPI users endpoints + CloudSQL
+
+First we had to terraform apply. It was necessary then to docker push again, for that I've added `make push` to make the process less manual.
+
+So first we check if the job succeded.
+```bash
+❯ kubectl get jobs
+NAME         STATUS     COMPLETIONS   DURATION   AGE
+db-migrate   Complete   1/1           67s        69m
+```
+
+Then if the pod is live and running
+```bash
+❯ kubectl get pods
+NAME                              READY   STATUS      RESTARTS   AGE
+db-migrate-rdnxk                  0/1     Completed   0          69m
+fast-api-hello-859f8866fc-596q8   1/1     Running     0          68m
+```
+
+With public IP with `terraform apply` we can get the docs on the browser and check the endpoints and test them.
+
+```bash
+❯ curl -X 'GET' 'http://34.156.151.75/'
+"Hello world"%
+
+❯ curl -X 'POST' \
+  'http://34.156.151.75/users' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "name": "string1",
+  "email": "user1@example.com"
+}'
+{"id":1,"name":"string1","email":"user1@example.com","created_at":"2026-09-25T17:19:01.511897Z"}%
+
+❯ curl -X 'POST' \
+  'http://34.156.151.75/users' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "name": "string2",
+  "email": "invalid-email"
+}'
+{"detail":[{"type":"value_error","loc":["body","email"],"msg":"value is not a valid email address: An email address must have an @-sign.","input":"invalid-email","ctx":{"reason":"An email address must have an @-sign."}}]}%
+
+❯ curl -X 'GET' \
+  'http://34.156.151.75/users/1' \
+  -H 'accept: */*'
+{"id":1,"name":"string1","email":"user1@example.com","created_at":"2026-09-25T17:19:01.511897Z"}%
+
+❯ curl -X 'DELETE' \
+  'http://34.156.151.75/users/1' \
+  -H 'accept: */*'
+
+❯ curl -X 'DELETE' \
+  'http://34.156.151.75/users/1' \
+  -H 'accept: */*'
+{"detail":"User not found"}%
+
+❯ curl -X 'GET' \
+  'http://34.156.151.75/users/1' \
+  -H 'accept: */*'
+{"detail":"User not found"}%
+```
+
+Note on cost: Cloud SQL is not part of the GCP Free Tier, it only offers a 30-day free trial instance, otherwise it is billed (here covered by the $300 welcome credit). Since a managed Postgres was explicitly asked, I went with the cheapest setup possible: `db-f1-micro` shared-core, zonal, 10GB HDD without autoresize, which is enough for the very little traffic expected.
