@@ -1,5 +1,78 @@
 locals {
   fast_api_hello_image = "${google_artifact_registry_repository.images.location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}/fast-api-hello:latest"
+
+  # Only identifiers, no secrets: authentication is done with Workload Identity + Cloud SQL IAM auth
+  db_env = {
+    INSTANCE_CONNECTION_NAME = google_sql_database_instance.main.connection_name
+    DB_NAME                  = google_sql_database.app.name
+    DB_IAM_USER              = google_sql_user.app.name
+  }
+}
+
+# Creates the schema and grants the API's user DML rights only. Idempotent, runs as the db-migrator identity.
+resource "kubernetes_job_v1" "db_migrate" {
+  metadata {
+    name = "db-migrate"
+  }
+
+  spec {
+    # Retries cover IAM bindings that take a minute to propagate on the first apply
+    backoff_limit = 5
+
+    template {
+      metadata {
+        labels = { app = "db-migrate" }
+      }
+
+      spec {
+        service_account_name = kubernetes_service_account_v1.db_migrator.metadata[0].name
+        restart_policy       = "Never"
+
+        container {
+          name    = "db-migrate"
+          image   = local.fast_api_hello_image
+          command = ["python", "migrate_v1.py"]
+
+          dynamic "env" {
+            for_each = merge(local.db_env, { DB_MIGRATOR_USER = google_sql_user.migrator.name })
+            content {
+              name  = env.key
+              value = env.value
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = "25m"
+              memory = "80Mi"
+            }
+            limits = {
+              memory = "128Mi"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  wait_for_completion = true
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+  }
+
+  depends_on = [
+    google_container_node_pool.gke,
+    google_sql_database.app,
+    google_sql_user.app,
+    google_project_iam_member.fast_api_hello_cloudsql_client,
+    google_project_iam_member.fast_api_hello_cloudsql_instance_user,
+    google_project_iam_member.db_migrator_cloudsql_client,
+    google_project_iam_member.db_migrator_cloudsql_instance_user,
+    google_service_account_iam_member.fast_api_hello_workload_identity,
+    google_service_account_iam_member.db_migrator_workload_identity,
+  ]
 }
 
 resource "kubernetes_deployment_v1" "fast_api_hello" {
