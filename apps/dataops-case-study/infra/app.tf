@@ -1,7 +1,7 @@
 locals {
   fast_api_hello_image = "${google_artifact_registry_repository.images.location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}/fast-api-hello:latest"
 
-  # Only identifiers, no secrets: authentication is done with Workload Identity + Cloud SQL IAM auth
+  # auth is done with Workload Identity + Cloud SQL IAM auth
   db_env = {
     INSTANCE_CONNECTION_NAME = google_sql_database_instance.main.connection_name
     DB_NAME                  = google_sql_database.app.name
@@ -16,7 +16,6 @@ resource "kubernetes_job_v1" "db_migrate" {
   }
 
   spec {
-    # Retries cover IAM bindings that take a minute to propagate on the first apply
     backoff_limit = 5
 
     template {
@@ -94,6 +93,8 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
       }
 
       spec {
+        service_account_name = kubernetes_service_account_v1.fast_api_hello.metadata[0].name
+
         container {
           name  = "fast-api-hello"
           image = local.fast_api_hello_image
@@ -102,16 +103,24 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
             container_port = 8000
           }
 
+          dynamic "env" {
+            for_each = local.db_env
+            content {
+              name  = env.key
+              value = env.value
+            }
+          }
+
           resources {
             requests = {
-              cpu    = "50m"
-              memory = "64Mi"
+              cpu    = "25m"
+              memory = "80Mi"
             }
             limits = {
               memory = "128Mi"
             }
           }
-          
+
           readiness_probe {
             http_get {
               path = "/"
@@ -134,7 +143,8 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
     }
   }
 
-  depends_on = [google_container_node_pool.gke]
+  # The table and grants must exist before the API serves /users
+  depends_on = [google_container_node_pool.gke, kubernetes_job_v1.db_migrate]
 }
 
 resource "kubernetes_service_v1" "fast_api_hello" {
