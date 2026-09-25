@@ -1,2 +1,4 @@
 fastapi==0.141.1
 uvicorn==0.53.0
+cloud-sql-python-connector[pg8000]==1.22.0
+email-validator==2.3.0
