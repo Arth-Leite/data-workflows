@@ -31,6 +31,9 @@ resource "google_logging_project_sink" "api_billing" {
   filter = <<-EOT
     resource.type="k8s_container"
     resource.labels.cluster_name="${google_container_cluster.gke.name}"
+    resource.labels.namespace_name="default"
+    resource.labels.container_name="fast-api-hello"
+    jsonPayload.method:*
   EOT
 
   bigquery_options {
