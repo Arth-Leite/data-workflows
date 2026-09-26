@@ -141,3 +141,103 @@ With public IP with `terraform apply` we can get the docs on the browser and che
 ```
 
 Note on cost: Cloud SQL is not part of the GCP Free Tier, it only offers a 30-day free trial instance, otherwise it is billed (here covered by the $300 welcome credit). Since a managed Postgres was explicitly asked, I went with the cheapest setup possible: `db-f1-micro` shared-core, zonal, 10GB HDD without autoresize, which is enough for the very little traffic expected.
+
+### Q5 - Logging API calls to BigQuery for billing
+
+After `make push` and `make apply` (which now also runs `make refresh` to point `kubectl` at the new cluster), the dataset only holds the `prices` view. The `stdout` table is created by the log sink when the first log arrives.
+
+```bash
+❯ kubectl get pods
+NAME                              READY   STATUS      RESTARTS   AGE
+db-migrate-v8ph2                  0/1     Completed   0          6m46s
+fast-api-hello-5844c6dbb5-n49vq   1/1     Running     0          6m9s
+```
+
+Then I called every endpoint, with successful and failed POSTs:
+
+```bash
+❯ curl -X GET 'http://34.22.179.149/'
+"Hello world"
+
+❯ curl -X POST 'http://34.22.179.149/users' -H 'Content-Type: application/json' -d '{"name": "Ada", "email": "ada@example.com"}'
+{"id":1,"name":"Ada","email":"ada@example.com","created_at":"2026-09-26T10:08:07.821219Z"}
+
+❯ curl -X POST 'http://34.22.179.149/users' -H 'Content-Type: application/json' -d '{"name": "Grace", "email": "grace@example.com"}'
+{"id":2,"name":"Grace","email":"grace@example.com","created_at":"2026-09-26T10:08:08.118495Z"}
+
+❯ curl -X POST 'http://34.22.179.149/users' -H 'Content-Type: application/json' -d '{"name": "Ada", "email": "ada@example.com"}'
+{"detail":"A user with this email already exists"}
+
+❯ curl -X POST 'http://34.22.179.149/users' -H 'Content-Type: application/json' -d '{"name": "Linus", "email": "invalid-email"}'
+{"detail":[{"type":"value_error","loc":["body","email"],"msg":"value is not a valid email address: An email address must have an @-sign.","input":"invalid-email","ctx":{"reason":"An email address must have an @-sign."}}]}
+
+❯ curl -X GET 'http://34.22.179.149/users/1'
+{"id":1,"name":"Ada","email":"ada@example.com","created_at":"2026-09-26T10:08:07.821219Z"}
+
+❯ curl -X DELETE 'http://34.22.179.149/users/2'
+
+❯ curl -X GET 'http://34.22.179.149/users/2'
+{"detail":"User not found"}
+```
+
+The calls show up in the Logs Explorer, and about 2 minutes later in BigQuery. Only the middleware's JSON lines get there: no uvicorn lines, no `db-migrate` logs and no `/healthz` probes.
+
+```bash
+❯ bq ls api_billing
+  tableId   Type                Labels                  Time Partitioning      Clustered Fields
+ --------- ------- --------------------------------- ------------------------ ------------------
+  prices    VIEW    goog-terraform-provisioned:true
+  stdout    TABLE                                     DAY (field: timestamp)
+
+❯ bq query --use_legacy_sql=false 'SELECT timestamp, jsonPayload.method, jsonPayload.path, jsonPayload.status FROM api_billing.stdout ORDER BY timestamp'
++---------------------+--------+----------+--------+
+|      timestamp      | method |   path   | status |
++---------------------+--------+----------+--------+
+| 2026-09-26 10:08:05 | GET    | /        |  200.0 |
+| 2026-09-26 10:08:05 | POST   | /users   |  201.0 |
+| 2026-09-26 10:08:08 | POST   | /users   |  201.0 |
+| 2026-09-26 10:08:08 | POST   | /users   |  409.0 |
+| 2026-09-26 10:08:08 | POST   | /users   |  422.0 |
+| 2026-09-26 10:08:08 | GET    | /users/1 |  200.0 |
+| 2026-09-26 10:08:09 | DELETE | /users/2 |  204.0 |
+| 2026-09-26 10:08:09 | GET    | /users/2 |  404.0 |
++---------------------+--------+----------+--------+
+```
+
+The prices are in euro cents by hour of day, in Paris time:
+
+```bash
+❯ bq query --use_legacy_sql=false 'SELECT * FROM api_billing.prices ORDER BY start_hour'
++------------+----------+-------------+
+| start_hour | end_hour | price_cents |
++------------+----------+-------------+
+|          0 |        8 |           1 |
+|          8 |       20 |           5 |
+|         20 |       24 |           2 |
++------------+----------+-------------+
+```
+
+To compute the bill, I join the logs to the prices. Only successful POSTs are billed:
+
+```bash
+❯ bq query --use_legacy_sql=false "SELECT
+  COUNT(*) AS billable_calls,
+  SUM(p.price_cents) / 100 AS total_eur
+FROM api_billing.stdout c
+JOIN api_billing.prices p
+  ON EXTRACT(HOUR FROM c.timestamp AT TIME ZONE 'Europe/Paris') >= p.start_hour
+  AND EXTRACT(HOUR FROM c.timestamp AT TIME ZONE 'Europe/Paris') < p.end_hour
+WHERE c.jsonPayload.method = 'POST'
+  AND c.jsonPayload.status BETWEEN 200 AND 299"
++----------------+-----------+
+| billable_calls | total_eur |
++----------------+-----------+
+|              2 |       0.1 |
++----------------+-----------+
+```
+
+The two 201 POSTs were made at 12:08 Paris time, in the 8h-20h band, so each costs 5 cents. The 409 and the 422 are not billed.
+
+Note on security: the sink writes as its own service account, which only has `bigquery.dataEditor` on the `api_billing` dataset. The app itself has no access to BigQuery.
+
+Note on the first logs: calls made in the first minute after `terraform apply` don't reach BigQuery, because the sink starts writing only once its IAM grant has propagated. They are still in Cloud Logging (30-day retention). This only happens when the sink is first created, which in production happens once, before any traffic.
