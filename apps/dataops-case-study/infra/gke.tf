@@ -31,9 +31,17 @@ resource "google_container_cluster" "gke" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
+  # GKE default, pinned: container stdout is the source of the billing logs
+  logging_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS", # required
+      "WORKLOADS"          # stdout/stderr we want
+    ]
+  }
+
   deletion_protection = false
 
-  depends_on = [google_project_service.container, google_compute_subnetwork.gke_nodes]
+  depends_on = [google_project_service.container, google_project_service.logging, google_compute_subnetwork.gke_nodes]
 }
 
 resource "google_container_node_pool" "gke" {
