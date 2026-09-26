@@ -42,3 +42,23 @@ resource "google_logging_project_sink" "api_billing" {
 
   depends_on = [google_project_service.logging]
 }
+
+# Hours are Europe/Paris, start inclusive, end exclusive
+resource "google_bigquery_table" "prices" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+  table_id   = "prices"
+
+  view {
+    use_legacy_sql = false
+    query          = <<-EOT
+      SELECT * FROM UNNEST([
+        STRUCT(0 AS start_hour, 8 AS end_hour, 1 AS price_cents),
+        (8, 20, 5),
+        (20, 24, 2)
+      ])
+    EOT
+  }
+
+  deletion_protection = false
+}
