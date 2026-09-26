@@ -22,3 +22,20 @@ resource "google_bigquery_dataset" "api_billing" {
 
   depends_on = [google_project_service.bigquery]
 }
+
+resource "google_logging_project_sink" "api_billing" {
+  project     = var.project_id
+  name        = "api-billing-to-bigquery"
+  destination = "bigquery.googleapis.com/${google_bigquery_dataset.api_billing.id}"
+
+  filter = <<-EOT
+    resource.type="k8s_container"
+    resource.labels.cluster_name="${google_container_cluster.gke.name}"
+  EOT
+
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+
+  depends_on = [google_project_service.logging]
+}
