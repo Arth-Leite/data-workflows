@@ -15,6 +15,9 @@ Conn = Annotated[pg8000.dbapi.Connection, Depends(get_conn)]
 
 @app.middleware("http")
 async def log_request(request: Request, call_next):
+    # Kubelet probes: not API calls, keep them out of the billing logs
+    if request.url.path == "/healthz":
+        return await call_next(request)
     start = datetime.now(timezone.utc).isoformat()
     status_code = 500
     try:
@@ -53,6 +56,11 @@ def run_query(conn: pg8000.dbapi.Connection, query: str, params: tuple = ()) -> 
 @app.get("/")
 def read_root():
     return "Hello world"
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return "ok"
 
 
 @app.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserOut)
