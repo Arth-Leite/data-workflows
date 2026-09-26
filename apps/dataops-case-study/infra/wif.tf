@@ -1,3 +1,8 @@
+locals {
+  # How the role shows up once assumed, minus the per-session suffix
+  aws_billing_role = "arn:aws:sts::${var.aws_account_id}:assumed-role/${var.aws_role_name}"
+}
+
 resource "google_project_service" "iam" {
   project            = var.project_id
   service            = "iam.googleapis.com"
@@ -33,4 +38,6 @@ resource "google_iam_workload_identity_pool_provider" "aws" {
   aws {
     account_id = var.aws_account_id
   }
+
+  attribute_condition = "attribute.aws_role == '${local.aws_billing_role}'"
 }
