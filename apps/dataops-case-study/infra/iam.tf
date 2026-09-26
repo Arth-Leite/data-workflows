@@ -75,3 +75,11 @@ resource "kubernetes_service_account_v1" "db_migrator" {
     }
   }
 }
+
+
+resource "google_bigquery_dataset_iam_member" "sink_writer" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_project_sink.api_billing.writer_identity
+}
