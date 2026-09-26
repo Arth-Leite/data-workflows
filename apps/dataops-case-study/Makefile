@@ -2,6 +2,7 @@ PROJECT_ID ?= dataops-case-study-509018
 REGION     ?= europe-west1
 REGISTRY   := $(REGION)-docker.pkg.dev
 IMAGE      := $(REGISTRY)/$(PROJECT_ID)/dataops/fast-api-hello:latest
+MY_IP_VAR  := -var="my_ip=$$(curl -fsS https://checkip.amazonaws.com)/32"
 
 .PHONY: push apply destroy
 
@@ -12,7 +13,7 @@ push:
 	docker push $(IMAGE)
 
 apply:
-	caffeinate -i terraform -chdir=infra apply
+	caffeinate -i terraform -chdir=infra apply $(MY_IP_VAR)
 
 destroy:
-	caffeinate -i terraform -chdir=infra destroy
+	caffeinate -i terraform -chdir=infra destroy $(MY_IP_VAR)
