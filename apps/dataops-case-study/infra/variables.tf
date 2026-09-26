@@ -27,3 +27,13 @@ variable "aws_account_id" {
     error_message = "aws_account_id must be 12 digits"
   }
 }
+
+variable "aws_role_name" {
+  type        = string
+  description = "AWS IAM role the billing service runs as (name only, without path)"
+
+  validation {
+    condition     = can(regex("^[\\w+=,.@-]{1,64}$", var.aws_role_name))
+    error_message = "aws_role_name must be a valid IAM role name"
+  }
+}
