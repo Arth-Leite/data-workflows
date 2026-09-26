@@ -83,3 +83,15 @@ resource "google_bigquery_dataset_iam_member" "sink_writer" {
   role       = "roles/bigquery.dataEditor"
   member     = google_logging_project_sink.api_billing.writer_identity
 }
+
+resource "google_service_account" "aws_billing" {
+  account_id   = "aws-billing"
+  display_name = "AWS billing orchestrator"
+}
+
+# WIF: let the federated AWS billing role impersonate its GCP SA
+resource "google_service_account_iam_member" "aws_billing_workload_identity" {
+  service_account_id = google_service_account.aws_billing.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_billing.name}/attribute.aws_role/${local.aws_billing_role}"
+}
