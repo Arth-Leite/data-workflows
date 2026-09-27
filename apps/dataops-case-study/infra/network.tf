@@ -31,6 +31,8 @@ resource "google_compute_subnetwork" "gke_nodes" {
     ip_cidr_range = "10.8.0.0/20"
   }
 
+  # For private nodes (Q7): without a public IP, nodes need this to reach Google APIs (Artifact Registry, Cloud SQL Admin, Logging)
+  private_ip_google_access = true
 }
 
 resource "google_project_service" "servicenetworking" {
