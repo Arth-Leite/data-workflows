@@ -95,3 +95,18 @@ resource "google_service_account_iam_member" "aws_billing_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_billing.name}/attribute.aws_role/${local.aws_billing_role}"
 }
+
+# Run query jobs in this project; data access is granted per dataset
+resource "google_project_iam_member" "aws_billing_bigquery_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = google_service_account.aws_billing.member
+}
+
+# Read-only, billing dataset only (logs table + prices view)
+resource "google_bigquery_dataset_iam_member" "aws_billing_reader" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = google_service_account.aws_billing.member
+}
