@@ -36,7 +36,8 @@ resource "google_sql_database_instance" "main" {
     connector_enforcement = "REQUIRED" # reject certs not freshly issued via IAM on this connection
 
     backup_configuration {
-      enabled = true
+      enabled                        = true
+      point_in_time_recovery_enabled = true
     }
 
     database_flags {
