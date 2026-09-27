@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY *.py .
 
+RUN useradd --uid 10001 --no-create-home app
+USER 10001
+
 EXPOSE 8000
 
 # remove the access log to make the logging cleaner
