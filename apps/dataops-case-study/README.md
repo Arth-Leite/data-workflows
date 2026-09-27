@@ -241,3 +241,105 @@ The two 201 POSTs were made at 12:08 Paris time, in the 8h-20h band, so each cos
 Note on security: the sink writes as its own service account, which only has `bigquery.dataEditor` on the `api_billing` dataset. The app itself has no access to BigQuery.
 
 Note on the first logs: calls made in the first minute after `terraform apply` don't reach BigQuery, because the sink starts writing only once its IAM grant has propagated. They are still in Cloud Logging (30-day retention). This only happens when the sink is first created, which in production happens once, before any traffic.
+
+### Q6 - Letting an AWS service query BigQuery
+
+I don't have the billing team's AWS, so I opened a free-tier AWS account and played their side with a small stack in [tests/aws-wif/](tests/aws-wif/). It creates two roles with no permissions: `billing-orchestrator`, the one we trust, and `other-role`, which must be refused.
+
+```bash
+❯ cd tests/aws-wif && terraform apply
+❯ terraform output
+aws_account_id = "<aws-account-id>"
+aws_role_name = "billing-orchestrator"
+billing_role_arn = "arn:aws:iam::<aws-account-id>:role/billing-orchestrator"
+other_role_arn = "arn:aws:iam::<aws-account-id>:role/other-role"
+```
+
+I copied the account and the role name into `infra/terraform.tfvars` and ran `make apply`:
+
+```hcl
+aws_account_id = "<aws-account-id>"
+aws_role_name  = "billing-orchestrator"
+```
+
+Then I generated the credential file the AWS service would use. It holds no secret, only which pool, provider and service account to use:
+
+```bash
+❯ gcloud iam workload-identity-pools create-cred-config \
+    projects/468083834460/locations/global/workloadIdentityPools/aws-billing/providers/aws-billing-account \
+    --service-account=aws-billing@dataops-case-study-509018.iam.gserviceaccount.com \
+    --aws --output-file=aws-billing-cred.json
+Created credential configuration file [aws-billing-cred.json].
+```
+
+To act as the role from my laptop, `assume.sh` assumes (impersonates) it and exports its temporary credentials, which is where Google's auth library looks for them. I also used a throwaway gcloud config so my own login stays untouched:
+
+```bash
+❯ source assume.sh arn:aws:iam::<aws-account-id>:role/billing-orchestrator
+arn:aws:sts::<aws-account-id>:assumed-role/billing-orchestrator/wif-test
+
+❯ export CLOUDSDK_CONFIG=$(mktemp -d)
+❯ gcloud auth login --cred-file=aws-billing-cred.json
+Authenticated with external account credentials for: [aws-billing@dataops-case-study-509018.iam.gserviceaccount.com].
+```
+
+After a `GET /` and a `POST /users` on the API, the billing role can read the prices and run the billing query:
+
+```bash
+❯ bq query --use_legacy_sql=false 'SELECT * FROM api_billing.prices ORDER BY start_hour'
++------------+----------+-------------+
+| start_hour | end_hour | price_cents |
++------------+----------+-------------+
+|          0 |        8 |           1 |
+|          8 |       20 |           5 |
+|         20 |       24 |           2 |
++------------+----------+-------------+
+
+❯ bq query --use_legacy_sql=false "SELECT c.jsonPayload.method, c.jsonPayload.path, c.jsonPayload.status, p.price_cents
+FROM api_billing.stdout c
+LEFT JOIN api_billing.prices p
+  ON EXTRACT(HOUR FROM c.timestamp AT TIME ZONE 'Europe/Paris') >= p.start_hour
+  AND EXTRACT(HOUR FROM c.timestamp AT TIME ZONE 'Europe/Paris') < p.end_hour
+ORDER BY c.timestamp DESC"
++--------+--------+--------+-------------+
+| method |  path  | status | price_cents |
++--------+--------+--------+-------------+
+| POST   | /users |  201.0 |           5 |
+| GET    | /      |  200.0 |           5 |
++--------+--------+--------+-------------+
+```
+
+But it can't write anything:
+
+```bash
+❯ bq query --use_legacy_sql=false 'CREATE TABLE api_billing.x AS SELECT 1 AS a'
+Access Denied: Dataset dataops-case-study-509018:api_billing: Permission bigquery.tables.create denied on dataset dataops-case-study-509018:api_billing (or it may not exist).
+```
+
+Then I switched to `other-role`, same account and same credential file. Google refuses it before it even reaches BigQuery:
+
+```bash
+❯ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+❯ source assume.sh arn:aws:iam::<aws-account-id>:role/other-role
+arn:aws:sts::<aws-account-id>:assumed-role/other-role/wif-test
+
+❯ gcloud auth print-access-token
+ERROR: (gcloud.auth.print-access-token) ('Error code unauthorized_client: The given credential is rejected by the attribute condition.', ...)
+```
+
+Note: I had to `unset` first, otherwise the shell is still the billing role, which isn't allowed to assume `other-role`. Also, `bq` only says "no active account" when the exchange fails, `gcloud auth print-access-token` shows the real error.
+
+Finally, the queries show up in the audit logs as the service account, with the AWS role behind it:
+
+```bash
+❯ gcloud logging read 'protoPayload.serviceName="bigquery.googleapis.com" AND protoPayload.authenticationInfo.principalEmail="aws-billing@dataops-case-study-509018.iam.gserviceaccount.com"' \
+    --freshness=1h --limit=1 --format='yaml(protoPayload.methodName,protoPayload.authenticationInfo)'
+protoPayload:
+  authenticationInfo:
+    principalEmail: aws-billing@dataops-case-study-509018.iam.gserviceaccount.com
+    serviceAccountDelegationInfo:
+    - principalSubject: principal://iam.googleapis.com/projects/468083834460/locations/global/workloadIdentityPools/aws-billing/subject/arn:aws:sts::<aws-account-id>:assumed-role/billing-orchestrator/wif-test
+  methodName: jobservice.getqueryresults
+```
+
+Note: my test roles trust my own IAM user so I can assume them from a laptop. The real role would obviously come from some EC2, Lambda or something and AWS would hand it the credentials directly, you would still the need the creds JSON inside GOOGLE_APPLICATION_CREDENTIALS to make it work though. The GCP side doesn't change: it only checks the role, not who assumed it.
