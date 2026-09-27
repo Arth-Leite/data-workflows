@@ -26,6 +26,12 @@ resource "google_container_cluster" "gke" {
     services_secondary_range_name = "services"
   }
 
+  # Nodes get no public IP, they reach Google APIs through Private Google Access on the subnet
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = false # control plane stays reachable for kubectl and Terraform
+  }
+
   # Lets pods authenticate as their own Google service account (used to reach Cloud SQL)
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
