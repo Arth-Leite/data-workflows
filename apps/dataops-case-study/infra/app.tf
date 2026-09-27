@@ -81,7 +81,7 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
   }
 
   spec {
-    replicas = 1
+    replicas = 3 # one per zone
 
     selector {
       match_labels = { app = "fast-api-hello" }
@@ -94,6 +94,16 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
 
       spec {
         service_account_name = kubernetes_service_account_v1.fast_api_hello.metadata[0].name
+
+        # Ensure one replica per zone
+        topology_spread_constraint {
+          max_skew           = 1
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "DoNotSchedule"
+          label_selector {
+            match_labels = { app = "fast-api-hello" }
+          }
+        }
 
         container {
           name  = "fast-api-hello"
@@ -145,6 +155,20 @@ resource "kubernetes_deployment_v1" "fast_api_hello" {
 
   # The table and grants must exist before the API serves /users
   depends_on = [google_container_node_pool.gke, kubernetes_job_v1.db_migrate]
+}
+
+# This keeps 2 pods in the case of planned node shutdowns like upgrades
+resource "kubernetes_pod_disruption_budget_v1" "fast_api_hello" {
+  metadata {
+    name = "fast-api-hello"
+  }
+
+  spec {
+    min_available = 2
+    selector {
+      match_labels = { app = "fast-api-hello" }
+    }
+  }
 }
 
 resource "kubernetes_service_v1" "fast_api_hello" {
