@@ -125,10 +125,10 @@ resource "google_project_iam_member" "aws_billing_bigquery_job_user" {
   member  = google_service_account.aws_billing.member
 }
 
-# Read-only, billing dataset only (logs table + prices view)
+# Read-only, shared views only: the raw logs in api_billing are not readable
 resource "google_bigquery_dataset_iam_member" "aws_billing_reader" {
   project    = var.project_id
-  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+  dataset_id = google_bigquery_dataset.billing_shared.dataset_id
   role       = "roles/bigquery.dataViewer"
   member     = google_service_account.aws_billing.member
 }
