@@ -11,6 +11,31 @@ resource "google_project_service" "bigquery" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "cloudquotas" {
+  project            = var.project_id
+  service            = "cloudquotas.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Approximative cap on BQ spending
+resource "google_cloud_quotas_quota_preference" "bigquery_query_per_day" {
+  parent   = "projects/${var.project_id}"
+  name     = "bigquery-query-usage-per-day"
+  service  = "bigquery.googleapis.com"
+  quota_id = "QueryUsagePerDay"
+
+  quota_config {
+    # It will fit on the BQ free tier of 1 TiB/month
+    preferred_value = 10 * 1024 # 10GiB
+  }
+
+  # Default is 200 TiB/day, the API refuses decreases this large without it
+  ignore_safety_checks = "QUOTA_DECREASE_PERCENTAGE_TOO_HIGH"
+  justification        = "Cost cap for the case study"
+
+  depends_on = [google_project_service.cloudquotas, google_project_service.bigquery]
+}
+
 resource "google_bigquery_dataset" "api_billing" {
   project     = var.project_id
   dataset_id  = "api_billing"
