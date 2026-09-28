@@ -48,6 +48,39 @@ resource "google_bigquery_dataset" "api_billing" {
   depends_on = [google_project_service.bigquery]
 }
 
+# Normally created by the sink on the first log, declared so the billing_shared views can reference it
+# Minimal schema, the sink adds the other LogEntry columns itself
+resource "google_bigquery_table" "stdout" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+  table_id   = "stdout"
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  schema = jsonencode([
+    { name = "timestamp", type = "TIMESTAMP", mode = "NULLABLE" },
+    {
+      name = "jsonPayload", type = "RECORD", mode = "NULLABLE",
+      fields = [
+        { name = "method", type = "STRING", mode = "NULLABLE" },
+        { name = "path", type = "STRING", mode = "NULLABLE" },
+        # JSON numbers land as FLOAT
+        { name = "status", type = "FLOAT", mode = "NULLABLE" },
+      ]
+    },
+  ])
+
+  deletion_protection = false
+
+  lifecycle {
+    # The sink extends the schema, removing columns would recreate the table
+    ignore_changes = [schema]
+  }
+}
+
 resource "google_logging_project_sink" "api_billing" {
   project     = var.project_id
   name        = "api-billing-to-bigquery"
@@ -65,7 +98,8 @@ resource "google_logging_project_sink" "api_billing" {
     use_partitioned_tables = true
   }
 
-  depends_on = [google_project_service.logging]
+  # The table must exist before the sink writes, or the sink creates its own and the apply fails
+  depends_on = [google_project_service.logging, google_bigquery_table.stdout]
 }
 
 # Dates and hours are Europe/Paris, start inclusive, end exclusive
@@ -87,4 +121,72 @@ resource "google_bigquery_table" "prices" {
   }
 
   deletion_protection = false
+}
+
+# Only what the billing team needs, the raw logs in api_billing stay private
+resource "google_bigquery_dataset" "billing_shared" {
+  project     = var.project_id
+  dataset_id  = "billing_shared"
+  location    = var.region
+  description = "Billing views shared with the AWS billing service"
+
+  delete_contents_on_destroy = true
+
+  depends_on = [google_project_service.bigquery]
+}
+
+# One row per request with the price in force, no pod names, labels or paths (they hold user ids)
+resource "google_bigquery_table" "shared_requests" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.billing_shared.dataset_id
+  table_id   = "requests"
+
+  view {
+    use_legacy_sql = false
+    query          = <<-EOT
+      SELECT
+        r.timestamp,
+        r.jsonPayload.method AS method,
+        CAST(r.jsonPayload.status AS INT64) AS status,
+        p.price_cents
+      FROM `${var.project_id}.${google_bigquery_table.stdout.dataset_id}.${google_bigquery_table.stdout.table_id}` r
+      LEFT JOIN `${var.project_id}.${google_bigquery_table.prices.dataset_id}.${google_bigquery_table.prices.table_id}` p
+        ON DATE(r.timestamp, 'Europe/Paris') >= p.valid_from
+        AND DATE(r.timestamp, 'Europe/Paris') < p.valid_to
+        AND EXTRACT(HOUR FROM r.timestamp AT TIME ZONE 'Europe/Paris') >= p.start_hour
+        AND EXTRACT(HOUR FROM r.timestamp AT TIME ZONE 'Europe/Paris') < p.end_hour
+    EOT
+  }
+
+  deletion_protection = false
+}
+
+resource "google_bigquery_table" "shared_prices" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.billing_shared.dataset_id
+  table_id   = "prices"
+
+  view {
+    use_legacy_sql = false
+    query          = "SELECT * FROM `${var.project_id}.${google_bigquery_table.prices.dataset_id}.${google_bigquery_table.prices.table_id}`"
+  }
+
+  deletion_protection = false
+}
+
+# Views in billing_shared can read api_billing, their readers can't
+resource "google_bigquery_dataset_access" "api_billing_shared" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.api_billing.dataset_id
+
+  dataset {
+    dataset {
+      project_id = var.project_id
+      dataset_id = google_bigquery_dataset.billing_shared.dataset_id
+    }
+    target_types = ["VIEWS"]
+  }
+
+  # Both edit the api_billing ACL, run them one after the other
+  depends_on = [google_bigquery_dataset_iam_member.sink_writer]
 }
