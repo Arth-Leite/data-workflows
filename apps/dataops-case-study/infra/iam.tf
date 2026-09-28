@@ -15,6 +15,28 @@ resource "google_service_account" "db_migrator" {
   display_name = "GKE workload db-migrator"
 }
 
+# Replaces the default compute SA (Editor) on the nodes
+resource "google_service_account" "gke_nodes" {
+  account_id   = "gke-nodes"
+  display_name = "GKE nodes"
+}
+
+# Logs, metrics and resource metadata only
+resource "google_project_iam_member" "gke_nodes_default" {
+  project = var.project_id
+  role    = "roles/container.defaultNodeServiceAccount"
+  member  = google_service_account.gke_nodes.member
+}
+
+# Pull images from our repository only
+resource "google_artifact_registry_repository_iam_member" "gke_nodes_reader" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.images.location
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.reader"
+  member     = google_service_account.gke_nodes.member
+}
+
 # Project-level Cloud SQL roles
 # client: connect to the instance through the connector/proxy
 # instanceUser: log in to Postgres as the IAM user (see google_sql_user in database.tf)
