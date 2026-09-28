@@ -68,7 +68,8 @@ resource "google_logging_project_sink" "api_billing" {
   depends_on = [google_project_service.logging]
 }
 
-# Hours are Europe/Paris, start inclusive, end exclusive
+# Dates and hours are Europe/Paris, start inclusive, end exclusive
+# A price change closes the current rows' valid_to and adds new ones from that date
 resource "google_bigquery_table" "prices" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.api_billing.dataset_id
@@ -78,9 +79,9 @@ resource "google_bigquery_table" "prices" {
     use_legacy_sql = false
     query          = <<-EOT
       SELECT * FROM UNNEST([
-        STRUCT(0 AS start_hour, 8 AS end_hour, 1 AS price_cents),
-        (8, 20, 5),
-        (20, 24, 2)
+        STRUCT(DATE '2026-01-01' AS valid_from, DATE '9999-12-31' AS valid_to, 0 AS start_hour, 8 AS end_hour, 1 AS price_cents),
+        (DATE '2026-01-01', DATE '9999-12-31', 8, 20, 5),
+        (DATE '2026-01-01', DATE '9999-12-31', 20, 24, 2)
       ])
     EOT
   }
