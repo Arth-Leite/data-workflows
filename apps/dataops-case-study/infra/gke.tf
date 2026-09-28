@@ -66,6 +66,7 @@ resource "google_container_node_pool" "gke" {
     disk_type    = "pd-standard"
     spot         = true
 
+    service_account = google_service_account.gke_nodes.email
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
     ]
@@ -75,4 +76,9 @@ resource "google_container_node_pool" "gke" {
       mode = "GKE_METADATA"
     }
   }
+
+  depends_on = [
+    google_project_iam_member.gke_nodes_default,
+    google_artifact_registry_repository_iam_member.gke_nodes_reader,
+  ]
 }
