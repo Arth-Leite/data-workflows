@@ -19,6 +19,7 @@ resource "google_project_service" "cloudquotas" {
 
 # Approximative cap on BQ spending
 resource "google_cloud_quotas_quota_preference" "bigquery_query_per_day" {
+  provider = google.billed_to_project
   parent   = "projects/${var.project_id}"
   name     = "bigquery-query-usage-per-day"
   service  = "bigquery.googleapis.com"
