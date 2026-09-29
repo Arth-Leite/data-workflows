@@ -21,8 +21,13 @@ resource "google_project_service" "iamcredentials" {
   disable_on_destroy = false
 }
 
+# A destroyed pool keeps its id for 30 days, a new suffix lets apply run right after a destroy
+resource "random_id" "aws_billing_pool" {
+  byte_length = 3
+}
+
 resource "google_iam_workload_identity_pool" "aws_billing" {
-  workload_identity_pool_id = "aws-billing"
+  workload_identity_pool_id = "aws-billing-${random_id.aws_billing_pool.hex}"
   display_name              = "AWS billing orchestrator"
   description               = "Lets the AWS billing service query BigQuery without a service account key"
 
