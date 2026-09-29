@@ -18,6 +18,15 @@ provider "google" {
   project = var.project_id
 }
 
+# Some APIs (Cloud Quotas) refuse user ADC without a quota project
+provider "google" {
+  alias                 = "billed_to_project"
+  region                = var.region
+  project               = var.project_id
+  user_project_override = true
+  billing_project       = var.project_id
+}
+
 data "google_client_config" "default" {}
 
 provider "kubernetes" {
