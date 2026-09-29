@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID
 
 import pg8000.dbapi
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
@@ -40,7 +41,7 @@ class UserIn(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: int
+    id: UUID
     name: str
     email: EmailStr
     created_at: datetime
@@ -79,7 +80,7 @@ def create_user(user: UserIn, conn: Conn):
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
-def get_user(user_id: int, conn: Conn):
+def get_user(user_id: UUID, conn: Conn):
     rows = run_query(conn, "SELECT id, name, email, created_at FROM users WHERE id = %s", (user_id,))
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -87,7 +88,7 @@ def get_user(user_id: int, conn: Conn):
 
 
 @app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, conn: Conn):
+def delete_user(user_id: UUID, conn: Conn):
     rows = run_query(conn, "DELETE FROM users WHERE id = %s RETURNING id", (user_id,))
     conn.commit()
     if not rows:

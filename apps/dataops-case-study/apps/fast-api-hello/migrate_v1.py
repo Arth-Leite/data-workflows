@@ -19,14 +19,13 @@ def main() -> None:
     statements = [
         """
         CREATE TABLE IF NOT EXISTS users (
-            id         SERIAL PRIMARY KEY,
+            id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name       TEXT NOT NULL,
             email      TEXT NOT NULL UNIQUE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """,
         f"GRANT SELECT, INSERT, DELETE ON users TO {app_user}",
-        f"GRANT USAGE ON SEQUENCE users_id_seq TO {app_user}",
     ]
 
     with Connector(ip_type=IPTypes.PRIVATE) as connector:
