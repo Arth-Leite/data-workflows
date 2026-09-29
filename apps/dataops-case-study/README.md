@@ -342,4 +342,110 @@ protoPayload:
   methodName: jobservice.getqueryresults
 ```
 
-Note: my test roles trust my own IAM user so I can assume them from a laptop. The real role would obviously come from some EC2, Lambda or something and AWS would hand it the credentials directly, you would still the need the creds JSON inside GOOGLE_APPLICATION_CREDENTIALS to make it work though. The GCP side doesn't change: it only checks the role, not who assumed it.
+Note: my test roles trust my own IAM user so I can assume them from a laptop. The real role would obviously come from some EC2, Lambda or something and AWS would hand it the credentials directly, you would still need the creds JSON inside GOOGLE_APPLICATION_CREDENTIALS to make it work though. The GCP side doesn't change: it only checks the role, not who assumed it.
+
+### Q7 - Improvements and high level requirements
+
+I went back over the high level requirements with everything built so far and looked for what could be better. I built the free changes; the ones that cost money or were too much for this project are listed as not implemented.
+
+#### Q1 - High SLA, resilient infrastructure
+
+1. Three replicas, one per zone: a spot reclaim or a zone loss still leaves 2 pods serving. A PodDisruptionBudget keeps 2 up during upgrades and drains.
+
+Not implemented, but what I would do in production:
+
+1. Regional cluster: today the control plane is in a single zone, with Cloud SQL. A regional one survives a zone loss (~73 USD/month, the free tier only covers a zonal one).
+
+   How: `location = var.region` on `google_container_cluster`.
+
+2. Cloud SQL HA: a standby in another zone with automatic failover. About twice the price, and on a dedicated-core tier since shared-core has no SLA.
+
+   How: `availability_type = "REGIONAL"` and `tier = "db-custom-1-3840"` on `google_sql_database_instance`.
+
+3. On-demand nodes (non spot): spot can reclaim all the nodes at once. An on-demand pool as the base and a spot one for the extra capacity (~+14 EUR/month for 3 nodes).
+
+   How: a second `google_container_node_pool` without `spot = true`.
+
+4. Autoscaling: a HorizontalPodAutoscaler and the cluster autoscaler instead of fixed replicas and nodes, plus a descheduler to rebalance the pods after a reclaim.
+
+   How: `kubernetes_horizontal_pod_autoscaler_v2`, an `autoscaling {}` block on the node pool, and the descheduler Helm chart with `RemovePodsViolatingTopologySpreadConstraint`.
+
+5. Monitoring and alerting: a log-based metric on the 5xx (the Q5 logs already have the status), an alert policy and latency SLOs. A high SLA also means knowing when we break it.
+
+   How: `google_logging_metric` on `jsonPayload.status>=500`, `google_monitoring_alert_policy` with a notification channel, and `google_monitoring_slo`.
+
+#### Q2 - Very little traffic, as cheap as possible
+
+1. A daily cap on BigQuery queries: BQ bills per scanned data, so a bad query can get expensive very fast. The project quota is now 10 GiB/day, which stays in the free 1 TiB/month.
+
+2. No public IPs on the nodes (see Q3): it also removes 3 billed IPs, ~19 EUR/month.
+
+Not implemented, but what I would do in production:
+
+1. Budget alert: I set one up in the console, in production it would be in Terraform.
+
+2. GKE Autopilot: billed per pod request instead of per node, its fee is covered by the free tier too, and the control plane is regional (Q1).
+
+   How: `enable_autopilot = true` on `google_container_cluster`, and remove the node pool.
+
+3. Cost labels: know which team or service costs what, from the billing export in BigQuery.
+
+   How: `default_labels` in the `google` provider block, and the billing export turned on in the console.
+
+#### Q3 - Expose the API to a given network, as securely as possible
+
+1. Nodes without public IPs: nobody should reach the nodes, only the load balancer. They still pull the image and send logs through Private Google Access.
+
+2. A dedicated service account for the nodes: they were running as the default Compute Engine one, which has Editor on the whole project. Now they can only write logs and metrics and pull our images.
+
+3. The app runs as non-root: the container didn't need root, so a compromised app can do less.
+
+Not implemented, but what I would do in production:
+
+1. HTTPS + API keys: today the traffic is plain HTTP and the IP is the only check. A Google-managed certificate on an HTTPS load balancer, and one API key per customer, only its SHA-256 hash stored. This would break the IP whitelist, so we would need an alternative implementation.
+
+   How: GKE Gateway with `google_certificate_manager_certificate`, one `google_secret_manager_secret` per customer, and a FastAPI dependency checking the `X-API-Key` header.
+
+2. Image supply chain: immutable tags (the git sha) instead of `:latest`, vulnerability scanning, and only images built by the CI can run (assuming prod would have a CI).
+
+   How: `containerscanning.googleapis.com` enabled, and `binary_authorization { evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE" }` on the cluster.
+
+#### Q4 - Small database for sensitive data, cost effective
+
+1. Point in time recovery: we can now restore the DB to any second before a mistake, not only to the last daily backup.
+
+2. UUIDs instead of incremental ids: with `/users/1`, `/users/2`, anyone who reaches the API could list all the users one by one.
+
+Not implemented, but what I would do in production:
+
+1. Deletion protection: this is a case-study project, but in prod we would have `deletion_protection`.
+
+   How: `deletion_protection = true` on `google_sql_database_instance`.
+
+2. A migrator without `cloudsqlsuperuser`: the migration job only needs to create the table, not to be an admin of the whole instance.
+
+   How: `database_roles = []` on the migrator user, and a schema it owns created once by an admin.
+
+3. Audit logs on the data: know who read or changed which rows, not only who connected.
+
+   How: `cloudsql.enable_pgaudit = on` and `pgaudit.log = read,write` in `database_flags`.
+
+#### Q5 - Bill the POST calls by time of day
+
+1. Price versioning: in Q5 the prices had no dates, so changing a price would have changed the bill for all the past calls too. Each price now has a `valid_from` and a `valid_to`.
+
+Not implemented, but what I would do in production:
+
+1. Keep the billing logs on a destroy: today `terraform destroy` deletes the dataset with everything in it.
+
+2. Bill per customer: for this moment we don't have the need for it since there is a single IP and no account.
+
+#### Q6 - Let the AWS billing service query BigQuery, securely
+
+1. The billing team only sees what they need: in Q6 the AWS role could read the raw logs, with pod names, labels and paths holding user ids. Now it reads a separate `billing_shared` dataset with views on only the billing columns.
+
+2. The daily BigQuery cap (Q2) also limits what the AWS service can spend.
+
+Not implemented, but what I would do in production:
+
+1. A quota per caller, so AWS can't use up the whole project's quota on its own.
