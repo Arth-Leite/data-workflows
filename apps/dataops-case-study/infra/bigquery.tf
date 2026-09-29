@@ -17,6 +17,13 @@ resource "google_project_service" "cloudquotas" {
   disable_on_destroy = false
 }
 
+# Quota preferences can't be deleted, destroy only forgets it, so adopt the existing one
+import {
+  provider = google.billed_to_project
+  to       = google_cloud_quotas_quota_preference.bigquery_query_per_day
+  id       = "projects/${var.project_id}/locations/global/quotaPreferences/bigquery-query-usage-per-day"
+}
+
 # Approximative cap on BQ spending
 resource "google_cloud_quotas_quota_preference" "bigquery_query_per_day" {
   provider = google.billed_to_project
