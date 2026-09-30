@@ -1,0 +1,84 @@
+locals {
+  # Being explicit rather than read from data.google_compute_zones
+  node_zones = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
+}
+
+resource "google_project_service" "container" {
+  project            = var.project_id
+  service            = "container.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_container_cluster" "gke" {
+  name = "dataops-cluster"
+
+  # cheaper to run on a zone instead of region
+  location = local.node_zones[0]
+
+  network    = google_compute_network.gke_vpc.id
+  subnetwork = google_compute_subnetwork.gke_nodes.id
+
+  remove_default_node_pool = true
+  initial_node_count       = 1
+
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods"
+    services_secondary_range_name = "services"
+  }
+
+  # Nodes get no public IP, they reach Google APIs through Private Google Access on the subnet
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = false # control plane stays reachable for kubectl and Terraform
+  }
+
+  # Lets pods authenticate as their own Google service account (used to reach Cloud SQL)
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # GKE default, pinned: container stdout is the source of the billing logs
+  logging_config {
+    enable_components = [
+      "SYSTEM_COMPONENTS", # required
+      "WORKLOADS"          # stdout/stderr we want
+    ]
+  }
+
+  deletion_protection = false
+
+  depends_on = [google_project_service.container, google_project_service.logging, google_compute_subnetwork.gke_nodes]
+}
+
+resource "google_container_node_pool" "gke" {
+  name    = "cheap-as-possible-pool"
+  cluster = google_container_cluster.gke.id
+
+  node_locations = local.node_zones
+  # node_count is per zone, so this provisions len(local.node_zones) nodes total
+  node_count = 1
+
+  # minimum on everything
+  node_config {
+    # e2-micro is the cheapest, but it is too small
+    machine_type = "e2-small"
+    disk_size_gb = 20
+    disk_type    = "pd-standard"
+    spot         = true
+
+    service_account = google_service_account.gke_nodes.email
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform",
+    ]
+
+    # Serve Workload Identity tokens to pods instead of the node's credentials
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+  }
+
+  depends_on = [
+    google_project_iam_member.gke_nodes_default,
+    google_artifact_registry_repository_iam_member.gke_nodes_reader,
+  ]
+}
