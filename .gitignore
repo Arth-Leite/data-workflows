@@ -18,6 +18,7 @@ dist/
 task-outputs/
 apps/web-crawler/src/web_crawler/learning/
 **/monkeytype-data/*
+experimenting/
 
 # macOS
 .DS_Store
