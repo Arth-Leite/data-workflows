@@ -20,11 +20,10 @@ services:
       PYTHONUNBUFFERED: "1"
       MT_DB_PATH: /app/monkeytype-data/monkeytype.sqlite3
     volumes:
-      - ../src/web_crawler:/app/apps/web-crawler/src/web_crawler
       - ../monkeytype-data:/app/monkeytype-data
-    command: sh -c "uv sync --frozen --no-dev --package web-crawler && python -m web_crawler.wikipedia"
-    # command: sh -c "uv sync --frozen --no-dev --package web-crawler && monkeytype run -m web_crawler.wikipedia"
-    # command: sh -c "uv sync --frozen --no-dev --package web-crawler && python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m web_crawler.wikipedia.crawler"
+    command: python -m web_crawler.wikipedia
+    # command: monkeytype run -m web_crawler.wikipedia
+    # command: python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m web_crawler.wikipedia.crawler
     depends_on:
       redis:
         condition: service_started
