@@ -7,7 +7,8 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock /app/
 COPY apps/web-crawler/pyproject.toml /app/apps/web-crawler/pyproject.toml
+COPY apps/web-crawler/src/ /app/apps/web-crawler/src/
 
-RUN uv sync --frozen --no-dev --no-install-project --package web-crawler
+RUN uv sync --frozen --no-dev --package web-crawler
 
 ENV PATH="/app/.venv/bin:$PATH"
