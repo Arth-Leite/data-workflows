@@ -1,8 +1,10 @@
-PROJECT_ID ?= dataops-case-study-509018
+# Defaults to the project selected in gcloud; override with PROJECT_ID=...
+PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION     ?= europe-west1
 REGISTRY   := $(REGION)-docker.pkg.dev
-IMAGE      := $(REGISTRY)/$(PROJECT_ID)/dataops/fast-api-hello:latest
+IMAGE      := $(REGISTRY)/$(PROJECT_ID)/images/fast-api-hello:latest
 MY_IP_VAR  := -var="my_ip=$$(curl -fsS https://checkip.amazonaws.com)/32"
+TF_VARS    := $(MY_IP_VAR) -var="project_id=$(PROJECT_ID)"
 
 .PHONY: push apply refresh destroy
 
@@ -13,7 +15,7 @@ push:
 	docker push $(IMAGE)
 
 apply:
-	caffeinate -i terraform -chdir=infra apply $(MY_IP_VAR)
+	caffeinate -i terraform -chdir=infra apply $(TF_VARS)
 	$(MAKE) refresh
 
 # Point kubectl at the cluster; its endpoint changes whenever the cluster is recreated
@@ -22,4 +24,4 @@ refresh:
 		--location $$(terraform -chdir=infra output -raw cluster_location) --project $(PROJECT_ID)
 
 destroy:
-	caffeinate -i terraform -chdir=infra destroy $(MY_IP_VAR)
+	caffeinate -i terraform -chdir=infra destroy $(TF_VARS)

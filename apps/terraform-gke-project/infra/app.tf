@@ -185,7 +185,7 @@ resource "kubernetes_service_v1" "fast_api_hello" {
       target_port = 8000
     }
 
-    # Q3: expose to your IP only.
+    # Only the caller's address can reach the load balancer
     load_balancer_source_ranges = [var.my_ip]
   }
 
