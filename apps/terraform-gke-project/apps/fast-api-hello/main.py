@@ -4,10 +4,9 @@ from typing import Annotated
 from uuid import UUID
 
 import pg8000.dbapi
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, EmailStr
-
 from db import get_conn
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from pydantic import BaseModel, EmailStr, Field
 
 app = FastAPI()
 
@@ -26,13 +25,17 @@ async def log_request(request: Request, call_next):
         status_code = response.status_code
         return response
     finally:
-        print(json.dumps({
-            # "time" (RFC 3339) is the key the GKE logging agent reads as the entry timestamp
-            "time": start,
-            "method": request.method,
-            "path": request.url.path,
-            "status": status_code,
-        }))
+        print(
+            json.dumps(
+                {
+                    # "time" (RFC 3339) is the key the GKE logging agent reads as the entry timestamp
+                    "time": start,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status_code,
+                }
+            )
+        )
 
 
 class UserIn(BaseModel):

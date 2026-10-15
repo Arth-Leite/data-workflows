@@ -5,11 +5,11 @@ resource "google_project_service" "sqladmin" {
 }
 
 resource "google_sql_database_instance" "main" {
-  name             = "dataops-db"
+  name             = "app-db"
   region           = var.region
   database_version = "POSTGRES_18"
 
-  # In production we would have it, but for this case-study I will remove it
+  # Disabled so a destroy does not leave the instance behind; enable in production
   deletion_protection = false
 
   settings {
