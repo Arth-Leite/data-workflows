@@ -10,7 +10,7 @@ resource "google_project_service" "container" {
 }
 
 resource "google_container_cluster" "gke" {
-  name = "dataops-cluster"
+  name = "app-cluster"
 
   # cheaper to run on a zone instead of region
   location = local.node_zones[0]
@@ -51,7 +51,7 @@ resource "google_container_cluster" "gke" {
 }
 
 resource "google_container_node_pool" "gke" {
-  name    = "cheap-as-possible-pool"
+  name    = "primary-pool"
   cluster = google_container_cluster.gke.id
 
   node_locations = local.node_zones
