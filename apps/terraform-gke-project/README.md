@@ -206,7 +206,7 @@ source tests/aws-wif/assume.sh "$OTHER_ROLE_ARN"
 gcloud auth print-access-token    # ERROR: ... rejected by the attribute condition
 
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-export CLOUDSDK_CONFIG=
+unset CLOUDSDK_CONFIG
 ```
 
 Finally, the queries are recorded in the audit logs as the `aws-billing` service account, with the

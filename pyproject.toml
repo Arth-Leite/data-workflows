@@ -1,5 +1,6 @@
 [tool.uv.workspace]
 members = ["apps/*"]
+exclude = ["apps/terraform-gke-project"]
 
 [tool.ruff]
 line-length = 120
