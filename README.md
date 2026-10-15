@@ -1,7 +1,8 @@
 # data-workflows
 
 A personal repo where I try out data engineering stuff outside of work. It's a uv workspace, so
-everything under `apps/` is its own package sharing one lockfile.
+everything under `apps/` is its own Python package sharing one lockfile (the Terraform-based
+`apps/terraform-gke-project` is excluded from the workspace).
 
 ## What's in here
 
