@@ -39,7 +39,7 @@ resource "google_cloud_quotas_quota_preference" "bigquery_query_per_day" {
 
   # Default is 200 TiB/day, the API refuses decreases this large without it
   ignore_safety_checks = "QUOTA_DECREASE_PERCENTAGE_TOO_HIGH"
-  justification        = "Cost cap for the case study"
+  justification        = "Cost cap on BigQuery query usage"
 
   depends_on = [google_project_service.cloudquotas, google_project_service.bigquery]
 }

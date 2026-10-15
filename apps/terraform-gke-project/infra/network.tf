@@ -6,7 +6,7 @@ resource "google_project_service" "compute" {
 
 # Our private network. Subnets are defined by hand instead of one per region
 resource "google_compute_network" "gke_vpc" {
-  name                    = "dataops-vpc"
+  name                    = "app-vpc"
   auto_create_subnetworks = false
 
   depends_on = [google_project_service.compute]
@@ -31,7 +31,7 @@ resource "google_compute_subnetwork" "gke_nodes" {
     ip_cidr_range = "10.8.0.0/20"
   }
 
-  # For private nodes (Q7): without a public IP, nodes need this to reach Google APIs (Artifact Registry, Cloud SQL Admin, Logging)
+  # Nodes have no public IP, so they need this to reach Google APIs (Artifact Registry, Cloud SQL Admin, Logging)
   private_ip_google_access = true
 }
 

@@ -1,6 +1,6 @@
 variable "project_id" {
-  type    = string
-  default = "dataops-case-study-509018"
+  type        = string
+  description = "GCP project to deploy into"
 }
 
 variable "region" {

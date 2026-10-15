@@ -14,6 +14,8 @@ Workers pull from the queue, fetch the extract and the outgoing links, push the 
 
 **`apps/dagster-pipelines`** — Same idea as the airflow one, but to try out Dagster.
 
+**`apps/terraform-gke-project`** — A FastAPI service on GKE, provisioned end to end with Terraform. Users live in Cloud SQL and every request is logged to BigQuery so usage can be billed by time of day. An AWS billing service reads the billing views through Workload Identity Federation, without any keys. See its [README](apps/terraform-gke-project/README.md) for the deployment and the feature checks.
+
 ## Running the crawler
 
 ```bash
