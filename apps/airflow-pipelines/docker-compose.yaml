@@ -8,6 +8,21 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./task-outputs/:/opt/airflow/task-outputs
+      - ../ml/data:/opt/airflow/ml-data:ro
+      - ../ml/outputs:/opt/airflow/ml-output
     environment:
       - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=True
+      - ML_DATA_DIR=/opt/airflow/ml-data
+      - ML_MODELS_DIR=/opt/airflow/ml-output/models
+      - ML_WORK_DIR=/opt/airflow/ml-output/runs
+      - SERVING_URL=http://ml:8000
     command: standalone
+
+  ml:
+    build:
+      context: ../../
+      dockerfile: apps/ml/Dockerfile
+    ports:
+      - 8000:8000
+    volumes:
+      - ../ml/outputs:/app/ml-output

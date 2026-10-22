@@ -9,6 +9,13 @@ WORKDIR /opt/airflow
 COPY pyproject.toml uv.lock ./
 COPY apps/airflow-pipelines/pyproject.toml apps/airflow-pipelines/pyproject.toml
 COPY apps/airflow-pipelines/src/ apps/airflow-pipelines/src/
+COPY apps/ml/pyproject.toml apps/ml/pyproject.toml
+COPY apps/ml/src/ apps/ml/src/
 RUN uv sync --frozen --no-dev --inexact --package airflow-pipelines
 
+COPY apps/ml/data/ ml-data/
 COPY apps/airflow-pipelines/dags/ dags/
+
+ENV ML_DATA_DIR=/opt/airflow/ml-data \
+    ML_MODELS_DIR=/opt/airflow/ml-output/models \
+    ML_WORK_DIR=/opt/airflow/ml-output/runs
