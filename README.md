@@ -17,6 +17,8 @@ Workers pull from the queue, fetch the extract and the outgoing links, push the 
 
 **`apps/terraform-gke-project`** — A FastAPI service on GKE, provisioned end to end with Terraform. Users live in Cloud SQL and every request is logged to BigQuery so usage can be billed by time of day. An AWS billing service reads the billing views through Workload Identity Federation, without any keys. See its [README](apps/terraform-gke-project/README.md) for the deployment and the feature checks.
 
+**`apps/ml`** — Vehicle reservation forecasting with data contracts, training, model evaluation, promotion, and an HTTP prediction service. Its DAG runs from `apps/airflow-pipelines`.
+
 ## Running the crawler
 
 ```bash
