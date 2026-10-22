@@ -13,9 +13,11 @@ dist/
 .ruff_cache/
 .pytest_cache/
 .ipynb_checkpoints/
+node_modules/
 
 # Project related
 task-outputs/
+apps/ml/outputs/
 apps/web-crawler/src/web_crawler/learning/
 **/monkeytype-data/*
 experimenting/
