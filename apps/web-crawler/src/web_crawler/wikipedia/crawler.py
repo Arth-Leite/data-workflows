@@ -24,7 +24,7 @@ class WikipediaScraper:
         self.swl = SlidingWindowLog(self.requests_count, self.requests_duration, minimum_delay=1)
 
     async def _setup(self) -> None:
-        self.db = await WikipediaCrawlerPostgresDB.create()
+        self.db = WikipediaCrawlerPostgresDB()
         self.frontier = RabbitRedisFrontier()
 
     def _start_robots_parser(self):

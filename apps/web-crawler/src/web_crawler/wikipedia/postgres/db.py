@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -17,34 +18,35 @@ class WikipediaCrawlerPostgresDB:
     ensuring that the DB exists and the tables exist, if not create with the propert schema
     """
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self.pool = pool
+    def __init__(self) -> None:
+        self._setup_lock = asyncio.Lock()
+        self.setup_done = False
+        self.pool: asyncpg.Pool = None
 
-    @classmethod
-    async def create(cls) -> "WikipediaCrawlerPostgresDB":
-        pool = await cls._generate_pool()
-        db = cls(pool)
-        await db._db_init()
-        return db
+    async def setup(self) -> None:
+        if self.setup_done:
+            return
+        async with self._setup_lock:  # Ensure only one can run this at a time
+            if self.setup_done:
+                return
+            self.pool = await asyncpg.create_pool(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                database=os.getenv("POSTGRES_DB"),
+                min_size=2,
+                max_size=5,
+            )
 
-    @staticmethod
-    async def _generate_pool() -> asyncpg.Pool:
-        username = os.getenv("POSTGRES_USER")
-        password = os.getenv("POSTGRES_PASSWORD")
-        host = os.getenv("POSTGRES_HOST")
-        database = os.getenv("POSTGRES_DB")
+            async with self.pool.acquire() as conn:
+                sql_statement = read_file("init.sql")
+                await conn.execute(sql_statement)
+            logging.info("WikipediaCrawlerPostgresDB: DB initiated")
 
-        return await asyncpg.create_pool(
-            dsn=f"postgresql://{username}:{password}@{host}/{database}", min_size=2, max_size=5
-        )
-
-    async def _db_init(self):
-        async with self.pool.acquire() as conn:
-            sql_statement = read_file("init.sql")
-            await conn.execute(sql_statement)
-        logging.info("WikipediaCrawlerPostgresDB: DB initiated")
+            self.setup_done = True
 
     async def insert_row(self, page_title: str, page_id: int, page_content: str):
+        await self.setup()
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "insert into wikipedia_pages (id, title, text_content) values ($1, $2, $3)",
@@ -54,17 +56,8 @@ class WikipediaCrawlerPostgresDB:
             )
 
     async def read_table(self):
+        await self.setup()
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("select * from wikipedia_pages")
 
         print(rows)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def test_db():
-        db = await WikipediaCrawlerPostgresDB.create()
-        await db.read_table()
-
-    asyncio.run(test_db())
