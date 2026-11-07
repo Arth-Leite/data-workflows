@@ -11,7 +11,7 @@ from web_crawler.wikipedia.constants import (
     REQUESTS_DURATION_DEFAULT,
     WIKIPEDIA_API_PHP_URL,
 )
-from web_crawler.wikipedia.frontier import PostgresFrontier
+from web_crawler.wikipedia.crawl_store import PostgresCrawlStore
 from web_crawler.wikipedia.utils import SlidingWindowLog, rate_limited
 
 
@@ -24,7 +24,7 @@ class WikipediaScraper:
         self.swl = SlidingWindowLog(self.requests_count, self.requests_duration, minimum_delay=1)
 
     async def _setup(self) -> None:
-        self.frontier = PostgresFrontier()
+        self.store = PostgresCrawlStore()
 
     def _start_robots_parser(self):
         # TODO: Implement a real robots parser
@@ -59,7 +59,7 @@ class WikipediaScraper:
 
         pages = response["query"]["pages"]
         for page in pages.values():
-            await self.frontier.store_crawled_page(
+            await self.store.store_crawled_page(
                 page_title=page["title"], page_id=page["pageid"], page_content=page["extract"]
             )
 
@@ -93,23 +93,20 @@ class WikipediaScraper:
         session: aiohttp.ClientSession,
     ):
         while self._pages_crawled < self.pages_limit:
-            title = await self.frontier.get_next_item()
+            title = await self.store.get_next_item()
             if not title:
                 # Queue empty (other workers may still add links): don't busy-loop
                 await asyncio.sleep(1)
                 continue
             try:
-                if await self.frontier.is_visited(title):
-                    continue
-
                 await self._request_text(session, title)
 
                 new_titles = await self._request_links(session, title)
 
                 for new_title in new_titles:
-                    await self.frontier.add_item_to_queue(new_title)
+                    await self.store.add_item_to_queue(new_title)
 
-                await self.frontier.set_visited(title)
+                await self.store.set_visited(title)
                 self._pages_crawled += 1
 
                 logging.info(f"Scraped {title}")
@@ -117,7 +114,7 @@ class WikipediaScraper:
             except Exception as e:
                 raise (e)
             finally:
-                await self.frontier.set_page_done(title)
+                await self.store.set_page_done(title)
         self.pages_limit_event.set()
 
     async def crawl(self, pages_limit: int = 50):
@@ -130,13 +127,13 @@ class WikipediaScraper:
             self.pages_limit_event = asyncio.Event()
 
             for article in self.seed_articles:
-                await self.frontier.add_item_to_queue(article)
+                await self.store.add_item_to_queue(article)
 
             workers = {asyncio.create_task(self._crawl_worker(session)) for _ in range(CONCURRENCY)}
 
             finishing_tasks = {
                 asyncio.create_task(self.pages_limit_event.wait()),
-                asyncio.create_task(self.frontier.wait_queue_drained.wait()),
+                asyncio.create_task(self.store.wait_queue_drained.wait()),
             }
             awaitables: set[asyncio.Task[Any]] = workers | finishing_tasks
             while True:

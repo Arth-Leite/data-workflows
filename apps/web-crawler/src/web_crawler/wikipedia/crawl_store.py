@@ -11,7 +11,7 @@ def read_file(file_name: str) -> str:
     return (SQL_DIR / file_name).read_text()
 
 
-class PostgresFrontier:
+class PostgresCrawlStore:
     def __init__(self) -> None:
         super().__init__()
         self.setup_done = False
@@ -71,23 +71,6 @@ class PostgresFrontier:
                 """,
                 title,
             )
-
-    # TODO: Change it to can_crawl, this will make more sense since we have pending
-    async def is_visited(self, content: str) -> bool:
-        await self.setup()
-
-        async with self.pool.acquire() as conn:
-            status = await conn.fetchval(
-                """
-                SELECT status
-                FROM wikipedia_pages
-                WHERE title = $1
-                """,
-                content,
-            )
-
-        # 'pending' is the status of the page we just claimed, so it must not count as visited
-        return status in ("crawled", "done")
 
     async def set_page_done(self, title: str):
         await self.setup()
