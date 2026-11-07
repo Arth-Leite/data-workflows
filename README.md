@@ -6,10 +6,7 @@ everything under `apps/` is its own Python package sharing one lockfile (the Ter
 
 ## What's in here
 
-**`apps/web-crawler`** — For the moment the most interesting part. An async crawler (only Wikipedia for now): It supports two frontiers options to handle durable queues and visited urls: **RabbitMQ+Redis** and **Postgres** alternative with indexes and locks to replace both tools.
-All the scraped pages are stored in **Postgres**.
-
-Workers pull from the queue, fetch the extract and the outgoing links, push the new titles back.
+**`apps/web-crawler`** — An async crawler (only Wikipedia for now). Postgres is the whole backend: a `PostgresCrawlStore` keeps the durable queue and the visited titles (using indexes and row locks), and the scraped pages are stored there too. It replaced the earlier RabbitMQ+Redis frontier.
 
 **`apps/airflow-pipelines`** — Airflow on Minikube with the KubernetesExecutor, tasks running as pods against a shared PVC. Mostly me trying out Airflow 3 on Kubernetes and Helm.
 
@@ -19,18 +16,7 @@ Workers pull from the queue, fetch the extract and the outgoing links, push the 
 
 **`apps/ml`** — Vehicle reservation forecasting with data contracts, training, model evaluation, promotion, and an HTTP prediction service. Its DAG runs from `apps/airflow-pipelines`.
 
-## Running the crawler
-
-```bash
-cd apps/web-crawler/wikipedia
-docker compose up --build
-```
-
-That brings up four containers: the crawler, Postgres, Redis and RabbitMQ. It seeds from a single
-article and stops after 20 pages — both are set in `crawler.py`.
-
-The RabbitMQ image includes the management UI but the port isn't published. Add `15672:15672` to
-the compose file if you want to watch the queue while it runs.
+**`experimenting/`** — Throwaway scraping experiments (asyncio, notebooks, Playwright persistent sessions) kept outside the workspace.
 
 ## Running Airflow on Minikube
 
