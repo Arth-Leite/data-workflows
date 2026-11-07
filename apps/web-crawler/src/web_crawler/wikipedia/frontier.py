@@ -1,99 +1,128 @@
 import asyncio
 import os
-from abc import ABC
+from pathlib import Path
 
-import aio_pika
-import redis.asyncio as redis
+import asyncpg
 
-
-class Frontier(ABC):
-    def __init__(self) -> None:
-        self.wait_queue_drained = asyncio.Event()
-
-    async def get_message(self):
-        pass
-
-    async def publish_message(self, message: str):
-        pass
-
-    async def ack_message(self, message):
-        pass
-
-    async def has_visited(self, content: str):
-        pass
-
-    async def mark_as_visited(self, content: str):
-        pass
-
-    @classmethod
-    def create(cls) -> "Frontier":
-        pass
+SQL_DIR = Path(__file__).parent / "sql"
 
 
-class PostgresFrontier(Frontier):
-    @classmethod
-    async def create(cls) -> "PostgresFrontier":
-        pool = await cls._generate_pool()
-        frontier = cls(pool)
-        await frontier._db_init()
-        return frontier
-
-    async def get_message(self):
-        return await super().get_message()
+def read_file(file_name: str) -> str:
+    return (SQL_DIR / file_name).read_text()
 
 
-class RabbitRedisFrontier(Frontier):
+class PostgresFrontier:
     def __init__(self) -> None:
         super().__init__()
-        self.queue = None
-        self.channel = None
-        self.message_ref_dict = dict()
+        self.setup_done = False
+        self.pool: asyncpg.Pool = None
+        self.lock = asyncio.Lock()
+        self.wait_queue_drained = asyncio.Event()
 
     async def setup(self):
-        rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
-        self.connection = await aio_pika.connect(f"amqp://admin:admin@{rabbitmq_host}/")
-        self.channel = await self.connection.channel()
-        self.queue = await self.channel.declare_queue("titles", durable=True)
-        self.message_count = self.queue.declaration_result.message_count or 0
+        if self.setup_done:
+            return
 
-        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"))
-        self.redis_set = "wikipedia"
+        async with self.lock:
+            if self.setup_done:
+                return
+            self.pool = await asyncpg.create_pool(
+                user=os.getenv("POSTGRES_USER"),
+                password=os.getenv("POSTGRES_PASSWORD"),
+                host=os.getenv("POSTGRES_HOST"),
+                database=os.getenv("POSTGRES_DB"),
+                min_size=2,
+                max_size=5,
+            )
 
-    async def has_visited(self, content: str):
-        ismember = await self.redis.sismember(self.redis_set, content)
-        if ismember == 1:
-            return True
-        else:
-            return False
+            async with self.pool.acquire() as conn:
+                await conn.execute(read_file("init.sql"))
+                await conn.execute(read_file("create_indexes.sql"))
 
-    async def mark_as_visited(self, content: str):
-        await self.redis.sadd(self.redis_set, content)
+            self.setup_done = True
 
-    async def get_message(self) -> str:
-        if self.queue is None:
-            await self.setup()
+    async def get_next_item(self) -> str | None:
+        await self.setup()
 
-        message_ref = await self.queue.get(
-            no_ack=False,  # no_ack=True means autoack once the message is delivered
-            fail=False,
-            timeout=10,
-        )
-        self.message_ref_dict[message_ref.body.decode("utf-8")] = message_ref
-        return message_ref.body.decode("utf-8")
+        async with self.pool.acquire() as conn:
+            sql_statement = read_file("get_next_item.sql")
+            return await conn.fetchval(sql_statement)
 
-    async def ack_message(self, message: str):
-        message_ref = self.message_ref_dict[message]
-        await message_ref.ack()
-        self.message_count -= 1
-        if self.message_count == 0:
-            self.wait_queue_drained.set()
+    async def add_item_to_queue(self, title: str):
+        await self.setup()
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO wikipedia_pages
+                VALUES (NULL, $1, NULL, now(), 'queued')
+                ON CONFLICT DO NOTHING
+                """,
+                title,
+            )
 
-    async def publish_message(self, message: str) -> None:
-        if self.channel is None:
-            await self.setup()
+    async def set_visited(self, title):
+        await self.setup()
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE wikipedia_pages
+                SET status = 'crawled', updated_datetime = now()
+                WHERE title = $1
+                """,
+                title,
+            )
 
-        await self.channel.default_exchange.publish(
-            message=aio_pika.Message(body=message.encode("utf-8"), delivery_mode=aio_pika.DeliveryMode.PERSISTENT),
-            routing_key=self.queue.name,
-        )
-        self.message_count += 1
+    # TODO: Change it to can_crawl, this will make more sense since we have pending
+    async def is_visited(self, content: str) -> bool:
+        await self.setup()
+
+        async with self.pool.acquire() as conn:
+            status = await conn.fetchval(
+                """
+                SELECT status
+                FROM wikipedia_pages
+                WHERE title = $1
+                """,
+                content,
+            )
+
+        # 'pending' is the status of the page we just claimed, so it must not count as visited
+        return status in ("crawled", "done")
+
+    async def set_page_done(self, title: str):
+        await self.setup()
+
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE wikipedia_pages
+                SET status = 'done'
+                WHERE title = $1
+                """,
+                title,
+            )
+
+            # Drained only when nothing is queued and no worker still has a page in flight
+            remaining = await conn.fetchval(
+                """
+                SELECT count(*)
+                FROM wikipedia_pages
+                WHERE status IN ('queued', 'pending')
+                """
+            )
+            if remaining == 0:
+                self.wait_queue_drained.set()
+
+    async def store_crawled_page(self, page_title: str, page_id: int, page_content: str):
+        await self.setup()
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE wikipedia_pages
+                SET numerical_id = $1, text_content = $2
+                WHERE title = $3
+                """,
+                page_id,
+                page_content,
+                page_title,
+            )

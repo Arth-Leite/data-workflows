@@ -14,38 +14,16 @@ services:
     environment:
       <<: *db-env
       OUTPUT_DIR: /app/crawled_data
-      REDIS_HOST: redis
       POSTGRES_HOST: postgres # postgres service name, not localhost
-      RABBITMQ_HOST: rabbitmq
       PYTHONUNBUFFERED: "1"
-      MT_DB_PATH: /app/monkeytype-data/monkeytype.sqlite3
     volumes:
-      - ../monkeytype-data:/app/monkeytype-data
+      - ../src:/app/apps/web-crawler/src
     command: python -m web_crawler.wikipedia
-    # command: monkeytype run -m web_crawler.wikipedia
-    # command: python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m web_crawler.wikipedia.crawler
+    # command: python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m web_crawler.wikipedia
     depends_on:
-      redis:
-        condition: service_started
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     restart: on-failure
-
-  redis:
-    container_name: crawler_redis
-    image: redis:8-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: redis-cli ping
-      interval: 1m30s
-      timeout: 30s
-      retries: 5
-      start_period: 20s
 
   postgres:
     container_name: crawler_postgres
@@ -63,25 +41,6 @@ services:
       retries: 5
       start_period: 20s
 
-  rabbitmq:
-    container_name: crawler_rabbitmq
-    image: rabbitmq:4.3.5-management-alpine
-    hostname: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin
-    ports:
-      - "5672:5672"
-    volumes:
-      - rabbit-data:/var/lib/rabbitmq
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 20s
 
 volumes:
-  redis-data:
   db-data:
-  rabbit-data:
